@@ -9,8 +9,9 @@ import fs from 'fs';
 try {
   // قائمة بالخطوط العربية المدعومة
   const arabicFonts = [
-    { path: path.join(process.cwd(), 'fonts', 'ArabicGame.ttf'), family: 'ArabicGameFont' },
-    { path: path.join(process.cwd(), 'fonts', 'ArabicGame-Bold.ttf'), family: 'ArabicGameFont', weight: 'bold' },
+    { path: path.join(process.cwd(), 'fonts', 'Amiri.ttf'), family: 'AmiriFont' },
+    { path: path.join(process.cwd(), 'fonts', 'ArabicGame.ttf'), family: 'AmiriFont' },
+    { path: path.join(process.cwd(), 'fonts', 'ArabicGame-Bold.ttf'), family: 'AmiriFont', weight: 'bold' },
     { path: '/app/fonts/Amiri-Regular.ttf', family: 'Amiri' },
     { path: '/app/fonts/Amiri-Bold.ttf', family: 'Amiri', weight: 'bold' },
     { path: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', family: 'DejaVuSans' },
@@ -141,8 +142,8 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
     
-    // استخدام الخط العربي المحسن مع تغيير ترتيب الخطوط لضمان دعم أفضل للغة العربية
-    ctx.font = 'bold 55px "ArabicGameFont", sans-serif';
+    // استخدام خط Amiri الجديد الذي تم تحميله للخط الرئيسي
+    ctx.font = 'bold 55px "AmiriFont", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText('توزيع الأدوار', canvas.width / 2, 70);
@@ -177,7 +178,7 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
         tempCtx.fillStyle = getRoleColor(role);
         tempCtx.fill();
         
-        tempCtx.font = '35px "ArabicGameFont", sans-serif';
+        tempCtx.font = '35px "AmiriFont", sans-serif';
         tempCtx.fillStyle = '#FFFFFF';
         tempCtx.textAlign = 'center';
         tempCtx.fillText(getRoleEmoji(role), 40, 52);
@@ -199,12 +200,12 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       }
     });
     
-    // Draw section titles with improved font - adding more font options for better Arabic support
+    // Draw section titles with improved font - using Amiri font
     ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
-    ctx.font = 'bold 45px "ArabicGameFont", sans-serif';
+    ctx.font = 'bold 45px "AmiriFont", sans-serif';
     
     // Village side
     ctx.fillStyle = '#57F287';
@@ -280,7 +281,7 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       ctx.fill();
       
       // Draw role name with better styling - using fonts with better Arabic support first
-      ctx.font = 'bold 24px "ArabicGameFont", sans-serif';
+      ctx.font = 'bold 24px "AmiriFont", sans-serif';
       
       // Draw text with glow effect
       ctx.shadowColor = 'rgba(87, 242, 135, 0.7)';
@@ -344,7 +345,7 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       ctx.fill();
       
       // Draw role name with better styling - using fonts with better Arabic support first
-      ctx.font = 'bold 24px "ArabicGameFont", sans-serif';
+      ctx.font = 'bold 24px "AmiriFont", sans-serif';
       
       // Draw text with glow effect
       ctx.shadowColor = 'rgba(237, 66, 69, 0.7)';
@@ -371,7 +372,7 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
     ctx.shadowOffsetY = 2;
     
     // Nicer font and size using Amiri as requested
-    ctx.font = 'bold 28px "ArabicGameFont", sans-serif';
+    ctx.font = 'bold 28px "AmiriFont", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText('ستصلك رسالة خاصة بدورك خلال لحظات', canvas.width / 2, canvas.height - 30);
@@ -402,7 +403,7 @@ async function createSimpleRolesCanvas(roles: RoleType[]): Promise<Buffer> {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
   // Title - using Amiri font as requested
-  ctx.font = 'bold 40px "ArabicGameFont", sans-serif';
+  ctx.font = 'bold 40px "AmiriFont", sans-serif';
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
   ctx.fillText('توزيع الأدوار', canvas.width / 2, 60);
@@ -428,20 +429,20 @@ async function createSimpleRolesCanvas(roles: RoleType[]): Promise<Buffer> {
     ctx.fill();
     
     // Draw role emoji
-    ctx.font = '35px "ArabicGameFont", sans-serif';
+    ctx.font = '35px "AmiriFont", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText(getRoleEmoji(role), x + roleSize / 2, y + roleSize / 2 + 12);
     
     // Draw role name with Amiri font as requested
-    ctx.font = '18px "ArabicGameFont", sans-serif';
+    ctx.font = '18px "AmiriFont", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText(getRoleDisplayName(role), x + roleSize / 2, y + roleSize + 30);
   }
   
   // Footer with Amiri font as requested
-  ctx.font = '18px "ArabicGameFont", sans-serif';
+  ctx.font = '18px "AmiriFont", sans-serif';
   ctx.fillStyle = '#B9BBBE';
   ctx.textAlign = 'center';
   ctx.fillText('ستصلك رسالة خاصة بدورك خلال لحظات', canvas.width / 2, canvas.height - 40);
