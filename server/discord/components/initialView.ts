@@ -232,6 +232,9 @@ export async function handleInitialViewButtons(interaction: ButtonInteraction) {
       return;
     }
     
+    // ابدأ الرد على التفاعل بالتأجيل لمنع أخطاء التوقيت
+    await interaction.deferUpdate();
+    
     // Store interaction for the game owner before updating the status
     storeInteraction(interaction.user.id, interaction);
     log(`Stored interaction for game owner ${interaction.user.username} (${interaction.user.id})`, 'discord-debug');
@@ -244,18 +247,33 @@ export async function handleInitialViewButtons(interaction: ButtonInteraction) {
     const gameState = gameManager.getGameState(gameId);
     if (gameState) {
       gameState.status = 'configuring';
+      
+      // Stop the countdown
+      gameManager.stopCountdown(gameId);
     }
     
-    // Move to role config view
-    const { embed, components } = await createRoleConfigEmbed(gameId);
-    
-    await interaction.update({
-      embeds: [embed],
-      components: components
-    });
-    
-    // Stop the countdown
-    gameManager.stopCountdown(gameId);
+    try {
+      // Move to role config view
+      const { embed, components } = await createRoleConfigEmbed(gameId);
+      
+      // استخدم editReply بدلاً من update لأننا استخدمنا deferUpdate
+      await interaction.editReply({
+        embeds: [embed],
+        components: components
+      });
+    } catch (error) {
+      log(`Error updating to role config view: ${error}`, 'discord-game');
+      
+      // في حالة حدوث خطأ، حاول الاستجابة مع رسالة بسيطة
+      try {
+        await interaction.followUp({
+          content: 'حدث خطأ أثناء الانتقال إلى إعدادات الأدوار. يرجى المحاولة مرة أخرى.',
+          ephemeral: true
+        });
+      } catch (followUpError) {
+        log(`Error sending follow-up message: ${followUpError}`, 'discord-game');
+      }
+    }
   }
   // Rules button
   else if (customId.startsWith('game_rules_')) {

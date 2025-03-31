@@ -10,59 +10,43 @@ import { getRoleEmoji, getRoleDisplayName } from './roleConfigView';
 import { createRolesDistributionCanvas } from '../utils/canvasGenerator';
 import { log } from '../../vite';
 import path from 'path';
+import { getGameManager } from '../game/gameManager';
 
-// Create the role distribution embed
+// Create the role distribution
 export async function createRoleDistributionEmbed(gameId: number, enabledRoles: RoleType[]) {
   try {
-    // Generate the role distribution image
-    const rolesImageBuffer = await createRolesDistributionCanvas(enabledRoles);
+    // Get the gamestate to access actual assigned roles
+    const gameManager = getGameManager();
+    const gameState = gameManager.getGameState(gameId);
+
+    if (!gameState) {
+      throw new Error(`Game with ID ${gameId} not found`);
+    }
+
+    // Get all players with their assigned roles
+    const assignedRoleTypes: RoleType[] = [];
+    gameState.getAllPlayers().forEach(player => {
+      if (player.role) {
+        assignedRoleTypes.push(player.role);
+      }
+    });
+    
+    // Generate the role distribution image based on actual assigned roles (not just enabled roles)
+    const rolesImageBuffer = await createRolesDistributionCanvas(assignedRoleTypes);
     const rolesAttachment = new AttachmentBuilder(rolesImageBuffer, { name: 'roles-distribution.png' });
     
-    // Create the embed
-    const embed = new EmbedBuilder()
-      .setTitle('توزيع الأدوار')
-      .setColor('#FF7B1C')
-      .setDescription('تم توزيع الأدوار على جميع اللاعبين. سيتم إرسال دورك لك برسالة خاصة.')
-      .setImage('attachment://roles-distribution.png')
-      .addFields(
-        { 
-          name: 'الأدوار النشطة', 
-          value: enabledRoles.map(role => `${getRoleEmoji(role)} **${getRoleDisplayName(role)}**`).join('\n')
-        },
-        {
-          name: 'بدء اللعبة',
-          value: 'ستبدأ اللعبة خلال 5 ثوانٍ...'
-        }
-      );
-    
-    // No action buttons needed for this view
+    // Return only the file, no embed or components
     return {
-      embed: embed,
-      components: [], // No components for this view
-      files: [rolesAttachment]
+      files: [rolesAttachment],
+      components: [] // No components for this view
     };
   } catch (error) {
-    log(`Error creating role distribution embed: ${error}`, 'discord');
+    log(`Error creating role distribution: ${error}`, 'discord');
     
-    // Fallback without image if there's an error
-    const embed = new EmbedBuilder()
-      .setTitle('توزيع الأدوار')
-      .setColor('#FF7B1C')
-      .setDescription('تم توزيع الأدوار على جميع اللاعبين. سيتم إرسال دورك لك برسالة خاصة.')
-      .addFields(
-        { 
-          name: 'الأدوار النشطة', 
-          value: enabledRoles.map(role => `${getRoleEmoji(role)} **${getRoleDisplayName(role)}**`).join('\n')
-        },
-        {
-          name: 'بدء اللعبة',
-          value: 'ستبدأ اللعبة خلال 5 ثوانٍ...'
-        }
-      );
-    
+    // Return empty in case of error (will be handled in the calling function)
     return {
-      embed: embed,
-      components: [] // No components for this view
+      files: [],
+      components: []
     };
   }
 }

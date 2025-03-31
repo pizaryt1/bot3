@@ -294,20 +294,33 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     // Assign roles to players
     gameManager.assignRoles(gameId, enabledRoles);
     
-    // Create the role distribution embed
-    const { embed, components, files } = await createRoleDistributionEmbed(gameId, enabledRoles);
-    
-    // Update the game message
+    // Send a message about role distribution
     try {
-      // Use editReply instead of update since we've already deferred
+      // Create a simple message instead of an embed
       await interaction.editReply({
-        embeds: [embed],
-        components: components || [],
-        files: files || []
+        content: `تم توزيع الأدوار على ${players.length} لاعبين، سيحصل كل لاعب على دوره الخاص في رسالة خاصة.`,
+        components: [],
+        embeds: []
       });
     } catch (error) {
       log(`Error updating game message: ${error}`, 'discord-game');
     }
+    
+    // After 5 seconds, show the role distribution image
+    setTimeout(async () => {
+      try {
+        // Get the distribution image based on actual assigned roles
+        const { files, components } = await createRoleDistributionEmbed(gameId, enabledRoles);
+        
+        // Send the image as a follow-up message without an embed
+        await interaction.followUp({
+          files: files,
+          components: components
+        });
+      } catch (error) {
+        log(`Error sending role distribution image: ${error}`, 'discord-game');
+      }
+    }, 5000);
     
     // Send role assignments to players
     setTimeout(() => {
