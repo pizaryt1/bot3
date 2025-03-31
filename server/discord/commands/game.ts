@@ -262,10 +262,236 @@ export function registerButtonHandlers(client: Client) {
             }, 2000);
           }
         }
-        else {
-          // تحويل تفاعلات الأزرار الأخرى إلى المعالج في gamePhaseManager
-          // سنحتفظ بالكود الأصلي هناك بدلاً من تكراره هنا
-          return; // دع المعالج الآخر يتعامل معه
+        // معالجة تفاعلات الأدوار الأخرى
+        else if (buttonId.startsWith('seer_action_')) {
+          log(`معالجة إجراء العراف: ${buttonId}`, 'discord-debug');
+          // استخراج معرّف اللاعب المستهدف من معرّف الزر
+          const targetId = parts[parts.length - 1];
+          
+          // الحصول على اللاعب المستهدف
+          const target = gameState.getPlayer(targetId);
+          if (!target) {
+            await interaction.reply({
+              content: 'اللاعب المستهدف غير موجود',
+              flags: [1 << 6]
+            });
+            return;
+          }
+          
+          // تسجيل إجراء العراف
+          gameState.addNightAction(interaction.user.id, {
+            targetId,
+            actionType: 'reveal'
+          });
+          
+          // تحديد ما إذا كان الهدف مستذئبًا
+          const isWerewolf = target.role === 'werewolf' || target.role === 'werewolfLeader';
+          
+          // إنشاء رسالة نتيجة الكشف
+          const resultEmbed = new EmbedBuilder()
+            .setTitle('👁️ نتيجة الرؤية')
+            .setColor(isWerewolf ? '#FF0000' : '#00FF00')
+            .setDescription(`
+            ## رؤيتك كشفت الحقيقة!
+            
+            بعد التركيز على **${target.username}**، تكشفت لك الحقيقة:
+            
+            **${target.username}** هو **${isWerewolf ? 'مستذئب! 🐺' : 'قروي عادي. 👨‍🌾'}**
+            
+            *استخدم هذه المعلومات بحكمة لمساعدة القرية.*
+            `);
+          
+          // إرسال نتيجة الكشف
+          await interaction.update({
+            embeds: [resultEmbed],
+            components: [],
+            content: null
+          });
+          
+          log(`العراف كشف هوية: ${target.username} (${isWerewolf ? 'مستذئب' : 'قروي'})`, 'discord-game');
+          
+          // التحقق من انتهاء الإجراءات الليلية
+          if (gameState.areAllNightActionsDone()) {
+            // إحضار الضحية المستهدفة
+            const victim = gameState.getPlayer(gameState.currentNightVictim as string);
+            const wasProtected = victim?.protected || false;
+            
+            // بدء مرحلة النهار بعد مهلة قصيرة
+            setTimeout(() => {
+              const dummyInteraction = interaction; // استخدام نفس التفاعل
+              startDayPhase(gameId, dummyInteraction, victim, wasProtected);
+            }, 2000);
+          }
+        }
+        else if (buttonId.startsWith('guardian_action_')) {
+          log(`معالجة إجراء الحارس: ${buttonId}`, 'discord-debug');
+          // استخراج معرّف اللاعب المستهدف من معرّف الزر
+          const targetId = parts[parts.length - 1];
+          
+          // الحصول على اللاعب المستهدف
+          const target = gameState.getPlayer(targetId);
+          if (!target) {
+            await interaction.reply({
+              content: 'اللاعب المستهدف غير موجود',
+              flags: [1 << 6]
+            });
+            return;
+          }
+          
+          // تسجيل إجراء الحارس
+          gameState.addNightAction(interaction.user.id, {
+            targetId,
+            actionType: 'protect'
+          });
+          
+          // تعيين حالة الحماية للاعب المستهدف
+          if (target) {
+            target.protected = true;
+            gameState.players.set(targetId, target);
+          }
+          
+          // إرسال تأكيد الإجراء
+          await interaction.update({
+            content: `تم اختيار **${target.username}** للحماية هذه الليلة.`,
+            components: [],
+            embeds: []
+          });
+          
+          log(`الحارس اختار حماية: ${target.username}`, 'discord-game');
+          
+          // التحقق من انتهاء الإجراءات الليلية
+          if (gameState.areAllNightActionsDone()) {
+            // إحضار الضحية المستهدفة
+            const victim = gameState.getPlayer(gameState.currentNightVictim as string);
+            const wasProtected = victim?.protected || false;
+            
+            // بدء مرحلة النهار بعد مهلة قصيرة
+            setTimeout(() => {
+              const dummyInteraction = interaction; // استخدام نفس التفاعل
+              startDayPhase(gameId, dummyInteraction, victim, wasProtected);
+            }, 2000);
+          }
+        }
+        else if (buttonId.startsWith('detective_action_')) {
+          log(`معالجة إجراء المحقق: ${buttonId}`, 'discord-debug');
+          // استخراج معرّف اللاعب المستهدف من معرّف الزر
+          const targetId = parts[parts.length - 1];
+          
+          // الحصول على اللاعب المستهدف
+          const target = gameState.getPlayer(targetId);
+          if (!target) {
+            await interaction.reply({
+              content: 'اللاعب المستهدف غير موجود',
+              flags: [1 << 6]
+            });
+            return;
+          }
+          
+          // تسجيل إجراء المحقق
+          gameState.addNightAction(interaction.user.id, {
+            targetId,
+            actionType: 'investigate'
+          });
+          
+          // إنشاء رسالة نتيجة التحقيق
+          const resultEmbed = new EmbedBuilder()
+            .setTitle('🔍 نتيجة التحقيق')
+            .setColor('#008080')
+            .setDescription(`
+            ## اكتشفت الحقيقة الكاملة!
+            
+            بعد تحقيق دقيق مع **${target.username}**، اكتشفت:
+            
+            **${target.username}** هو **${getRoleDisplayName(target.role as RoleType)} ${getRoleEmoji(target.role as RoleType)}**
+            
+            *هذه معلومات قيمة يمكنك استخدامها لصالح القرية.*
+            `);
+          
+          // إرسال نتيجة التحقيق
+          await interaction.update({
+            embeds: [resultEmbed],
+            components: [],
+            content: null
+          });
+          
+          log(`المحقق كشف دور: ${target.username} (${target.role})`, 'discord-game');
+          
+          // التحقق من انتهاء الإجراءات الليلية
+          if (gameState.areAllNightActionsDone()) {
+            // إحضار الضحية المستهدفة
+            const victim = gameState.getPlayer(gameState.currentNightVictim as string);
+            const wasProtected = victim?.protected || false;
+            
+            // بدء مرحلة النهار بعد مهلة قصيرة
+            setTimeout(() => {
+              const dummyInteraction = interaction; // استخدام نفس التفاعل
+              startDayPhase(gameId, dummyInteraction, victim, wasProtected);
+            }, 2000);
+          }
+        }
+        else if (buttonId.startsWith('sniper_action_')) {
+          // سنضيف معالجة هذا الزر لاحقاً إذا تطلب الأمر
+          return;
+        }
+        else if (buttonId.startsWith('reviver_action_')) {
+          // سنضيف معالجة هذا الزر لاحقاً إذا تطلب الأمر
+          return;
+        }
+        else if (buttonId.startsWith('wizard_action_')) {
+          // سنضيف معالجة هذا الزر لاحقاً إذا تطلب الأمر
+          return;
+        }
+        else if (buttonId.startsWith('start_night_') || 
+                buttonId.startsWith('end_discussion_') || 
+                buttonId.startsWith('start_voting_') || 
+                buttonId.startsWith('end_voting_') || 
+                buttonId.startsWith('new_game_')) {
+          // معالجة أزرار مراحل اللعبة الأخرى
+          log(`توجيه زر مرحلة اللعبة: ${buttonId}`, 'discord-debug');
+          
+          // تأكيد استلام التفاعل
+          await interaction.deferUpdate().catch(error => {
+            log(`Error deferring update: ${error}`, 'discord-error');
+          });
+          
+          if (buttonId.startsWith('start_night_')) {
+            startNightPhase(gameId, interaction);
+          }
+          else if (buttonId.startsWith('end_discussion_')) {
+            // التحقق من أن الضاغط على الزر هو مالك اللعبة
+            if (interaction.user.id !== gameState.ownerId) {
+              await interaction.followUp({
+                content: 'فقط مالك اللعبة يمكنه إنهاء النقاش',
+                ephemeral: true
+              });
+              return;
+            }
+            
+            // إيقاف المؤقت إذا كان موجودًا
+            if (gameState.discussionTimer) {
+              clearInterval(gameState.discussionTimer);
+            }
+            
+            // بدء مرحلة التصويت
+            startVotingPhase(gameId, interaction);
+          }
+          else if (buttonId.startsWith('start_voting_')) {
+            startVotingPhase(gameId, interaction);
+          }
+          else if (buttonId.startsWith('end_voting_')) {
+            // إيقاف مؤقت التصويت إذا كان موجودًا
+            if (gameState.votingTimer) {
+              clearInterval(gameState.votingTimer);
+            }
+            
+            handleVotingResults(gameId, interaction);
+          }
+          else if (buttonId.startsWith('new_game_')) {
+            await interaction.followUp({
+              content: 'لبدء لعبة جديدة، استخدم الأمر `/game`',
+              ephemeral: true
+            });
+          }
         }
       }
       else {
