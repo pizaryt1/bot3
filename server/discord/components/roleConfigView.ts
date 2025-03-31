@@ -6,7 +6,9 @@ import {
   ButtonInteraction,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
-  ComponentType
+  ComponentType,
+  ChannelType,
+  TextChannel
 } from 'discord.js';
 import { storage } from '../../storage';
 import { log } from '../../vite';
@@ -246,10 +248,42 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
   else if (customId.startsWith('role_start_')) {
     const players = await storage.getGamePlayers(gameId);
     if (players.length < 3) {
-      await interaction.reply({
-        content: 'يجب أن يكون هناك على الأقل 3 لاعبين لبدء اللعبة.',
-        ephemeral: true
+      // إنشاء إمبيد احترافي يوضح عدم اكتمال عدد اللاعبين
+      const notEnoughPlayersEmbed = new EmbedBuilder()
+        .setTitle('⚠️ عدد اللاعبين غير كافي')
+        .setColor('#FF5555')
+        .setDescription(`
+          ## عذراً، لا يمكن بدء اللعبة
+          
+          **سبب المشكلة**: يوجد حالياً ${players.length} لاعب فقط في اللعبة.
+          **الحل**: تحتاج إلى 3 لاعبين على الأقل لبدء اللعبة.
+          
+          قم بدعوة المزيد من اللاعبين للانضمام إلى اللعبة ثم حاول مرة أخرى.
+        `)
+        .setFooter({ text: 'سيتم إلغاء هذه المحاولة تلقائياً بعد 5 ثوانٍ' });
+      
+      // أرسل الإمبيد كرسالة عامة (ليست خاصة) لكل اللاعبين ليروا المشكلة
+      const reply = await interaction.reply({
+        embeds: [notEnoughPlayersEmbed],
+        ephemeral: false
       });
+      
+      // بعد 5 ثوانٍ، قم بحذف الرسالة وإلغاء اللعبة
+      setTimeout(async () => {
+        try {
+          // حذف الرسالة
+          await reply.delete();
+          
+          // إرسال رسالة متابعة خاصة للمالك فقط
+          await interaction.followUp({
+            content: 'تم إلغاء محاولة بدء اللعبة بسبب عدم وجود عدد كافٍ من اللاعبين. يمكنك المحاولة مرة أخرى عندما ينضم المزيد من اللاعبين.',
+            ephemeral: true
+          });
+        } catch (error) {
+          log(`Error deleting not enough players message: ${error}`, 'discord-game');
+        }
+      }, 5000);
+      
       return;
     }
 
@@ -281,7 +315,7 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     // First, defer the reply to the interaction to avoid timeout
     await interaction.deferUpdate();
     
-    // Add a notice about how roles are distributed
+    // Add a notice about how roles are distributed (ephemeral message only to the game owner)
     try {
       await interaction.followUp({
         content: `⚠️ **ملاحظة هامة**: سيتم توزيع الأدوار بشكل أساسي حسب عدد اللاعبين (${players.length} لاعبين) مع مراعاة الأدوار المفعلة. التوزيع النهائي قد يختلف عن الأدوار المفعلة إذا تطلب ذلك توازن اللعبة.`,
@@ -294,28 +328,50 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     // Assign roles to players
     gameManager.assignRoles(gameId, enabledRoles);
     
-    // Send a message about role distribution
+    // Try to delete all previous messages to keep the channel clean
     try {
-      // Create a simple message instead of an embed
-      await interaction.editReply({
-        content: `تم توزيع الأدوار على ${players.length} لاعبين، سيحصل كل لاعب على دوره الخاص في رسالة خاصة.`,
-        components: [],
-        embeds: []
-      });
+      // Get the channel and the message
+      const channel = interaction.channel;
+      if (channel && channel.isTextBased()) {
+        // We'll clear our own previous message by editing it to a simple "starting game" message
+        await interaction.editReply({
+          content: `⏳ **جاري بدء اللعبة...**`,
+          components: [],
+          embeds: []
+        });
+      }
+    } catch (error) {
+      log(`Error clearing messages: ${error}`, 'discord-game');
+    }
+    
+    // Store the message ID without sending an extra message
+    try {
+      // Get the current message ID for future reference
+      const message = await interaction.fetchReply();
+      await storage.updateGameMessage(gameId, message.id);
     } catch (error) {
       log(`Error updating game message: ${error}`, 'discord-game');
     }
     
-    // After 5 seconds, show the role distribution image
+    // After 5 seconds, show the role distribution image with a good message
     setTimeout(async () => {
       try {
         // Get the distribution image based on actual assigned roles
         const { files, components } = await createRoleDistributionEmbed(gameId, enabledRoles);
         
-        // Send the image as a follow-up message without an embed
+        // Send the image with a professional message using followUp
         await interaction.followUp({
+          content: `# 🎭 توزيع الأدوار
+
+تم توزيع الأدوار على جميع اللاعبين بنجاح! تحقق من الرسالة الخاصة بك لمعرفة دورك.
+*كن حذراً من كشف دورك للآخرين! 🤫*
+
+**تذكير بالقواعد**: 
+• المستذئبون يعرفون بعضهم البعض
+• القرويون يجب عليهم اكتشاف من هم المستذئبون
+• كل دور له قدرات خاصة، راجع تفاصيل دورك في الرسالة الخاصة`,
           files: files,
-          components: components
+          components: components || []
         });
       } catch (error) {
         log(`Error sending role distribution image: ${error}`, 'discord-game');
@@ -325,7 +381,7 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     // Send role assignments to players
     setTimeout(() => {
       gameManager.sendRoleAssignments(gameId);
-    }, 5000); // 5 seconds delay
+    }, 8000); // تأخير أطول قليلاً للتأكد من أن الصورة تم عرضها أولاً
   }
 }
 

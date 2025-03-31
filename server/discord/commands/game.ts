@@ -35,6 +35,22 @@ const gameCommand = {
     }),
   async execute(interaction: ChatInputCommandInteraction) {
     try {
+      // Check if there's already an active game in this channel
+      const activeGames = await storage.getActiveGames();
+      const channelActiveGame = activeGames.find(game => 
+        game.channelId === interaction.channelId && 
+        game.status !== 'ended'
+      );
+      
+      // If there's an active game, don't allow starting a new one
+      if (channelActiveGame) {
+        await interaction.reply({
+          content: `⛔ **لا يمكن بدء لعبة جديدة**\n\nيوجد بالفعل لعبة نشطة في هذه القناة. يجب إنهاء اللعبة الحالية أولاً قبل بدء لعبة جديدة.`,
+          ephemeral: true
+        });
+        return;
+      }
+      
       // Create a new game in storage
       const game = await storage.createGame(
         interaction.channelId,

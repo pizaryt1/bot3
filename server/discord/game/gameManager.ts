@@ -111,14 +111,68 @@ export class GameManager {
         log(`Error updating countdown for game ${gameId}: ${error}`, 'game-manager');
       }
       
-      // If countdown reaches 0, move to role configuration
+      // If countdown reaches 0, check if there are enough players before moving on
       if (newTime <= 0) {
         this.stopCountdown(gameId);
         
         const game = await storage.getGame(gameId);
         if (!game || !game.messageId || !game.channelId || game.status !== 'setup') return;
         
-        // Move to role configuration
+        // Get the players for this game
+        const players = await storage.getGamePlayers(gameId);
+        
+        // Check if there are enough players (at least 3)
+        if (players.length < 3) {
+          try {
+            const client = getClient();
+            const channel = await client.channels.fetch(game.channelId) as TextChannel;
+            if (!channel) return;
+            
+            const message = await channel.messages.fetch(game.messageId);
+            if (!message) return;
+            
+            // Create not enough players embed with professional styling
+            const notEnoughPlayersEmbed = new EmbedBuilder()
+              .setTitle('⚠️ عدد اللاعبين غير كافي')
+              .setColor('#FF5555')
+              .setDescription(`
+                ## تم إلغاء اللعبة بسبب عدم اكتمال العدد
+                
+                **سبب المشكلة**: انتهى وقت الانتظار ويوجد ${players.length} لاعب فقط في اللعبة.
+                **الحل**: تحتاج إلى 3 لاعبين على الأقل لبدء اللعبة.
+                
+                يمكنك بدء لعبة جديدة والتأكد من وجود عدد كافٍ من اللاعبين.
+              `)
+              .setFooter({ text: 'سيتم إلغاء اللعبة وحذف هذه الرسالة بعد 5 ثوانٍ' });
+            
+            // Update the message with the "not enough players" embed
+            await message.edit({ embeds: [notEnoughPlayersEmbed], components: [] });
+            
+            // End the game in storage
+            await storage.updateGameStatus(gameId, 'ended');
+            
+            // Delete the game from the manager
+            this.games.delete(gameId);
+            
+            // Set a timeout to delete the message after 5 seconds
+            setTimeout(async () => {
+              try {
+                await message.delete();
+                log(`Deleted not enough players message for game ${gameId}`, 'game-manager');
+              } catch (error) {
+                log(`Error deleting not enough players message: ${error}`, 'game-manager');
+              }
+            }, 5000);
+            
+            log(`Game ${gameId} cancelled due to insufficient players (${players.length})`, 'game-manager');
+            return;
+          } catch (error) {
+            log(`Error handling insufficient players for game ${gameId}: ${error}`, 'game-manager');
+            return;
+          }
+        }
+        
+        // If we have enough players, move to role configuration
         try {
           await storage.updateGameStatus(gameId, 'configuring');
           

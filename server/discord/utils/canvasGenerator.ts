@@ -5,20 +5,36 @@ import { log } from '../../vite';
 import path from 'path';
 import fs from 'fs';
 
-// تسجيل الخطوط العربية إذا كانت موجودة
+// استخدام خطوط عربية متعددة مع تحسين المظهر العام
 try {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-  const fontDir = path.join(homeDir, '.fonts');
+  // قائمة بالخطوط العربية المدعومة
+  const arabicFonts = [
+    { path: '/app/fonts/Amiri-Regular.ttf', family: 'Amiri' },
+    { path: '/app/fonts/Amiri-Bold.ttf', family: 'Amiri', weight: 'bold' },
+    { path: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', family: 'DejaVuSans' },
+    { path: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', family: 'DejaVuSans', weight: 'bold' },
+    { path: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', family: 'LiberationSans' },
+    { path: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', family: 'LiberationSans', weight: 'bold' }
+  ];
+
+  // محاولة تسجيل الخطوط المتوفرة
+  let registeredCount = 0;
   
-  if (fs.existsSync(path.join(fontDir, 'Amiri-Regular.ttf'))) {
-    registerFont(path.join(fontDir, 'Amiri-Regular.ttf'), { family: 'Amiri' });
-    registerFont(path.join(fontDir, 'Amiri-Bold.ttf'), { family: 'Amiri', weight: 'bold' });
-    log('Registered Amiri font successfully', 'canvas');
+  for (const font of arabicFonts) {
+    if (fs.existsSync(font.path)) {
+      registerFont(font.path, { family: font.family, weight: font.weight || 'normal' });
+      registeredCount++;
+      log(`تم تسجيل الخط: ${font.family} ${font.weight || 'normal'}`, 'canvas');
+    }
+  }
+  
+  if (registeredCount === 0) {
+    log('لم يتم العثور على أي خطوط عربية مدعومة. سيتم استخدام الخطوط الافتراضية.', 'canvas');
   } else {
-    log('Amiri font not found, using system fonts', 'canvas');
+    log(`تم تسجيل ${registeredCount} خطوط بنجاح`, 'canvas');
   }
 } catch (error) {
-  log(`Error registering fonts: ${error}`, 'canvas');
+  log(`حدث خطأ أثناء تسجيل الخطوط: ${error}`, 'canvas');
 }
 
 // Path to role icons and background
@@ -125,8 +141,8 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
     
-    // استخدام الخط العربي المحسن
-    ctx.font = 'bold 55px "Amiri", "DejaVuSans", "Tajawal", "Arial"';
+    // استخدام الخط العربي المحسن مع تغيير ترتيب الخطوط لضمان دعم أفضل للغة العربية
+    ctx.font = 'bold 55px "Amiri", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText('توزيع الأدوار', canvas.width / 2, 70);
@@ -183,12 +199,12 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       }
     });
     
-    // Draw section titles with improved font
+    // Draw section titles with improved font - adding more font options for better Arabic support
     ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
-    ctx.font = 'bold 45px "Amiri", "DejaVuSans", "Tajawal", "Arial"';
+    ctx.font = 'bold 45px "Amiri", sans-serif';
     
     // Village side
     ctx.fillStyle = '#57F287';
@@ -263,8 +279,8 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       drawRoundedRect(ctx, textX, textY, textWidth, textHeight, 10);
       ctx.fill();
       
-      // Draw role name with better styling
-      ctx.font = 'bold 24px "Amiri", "DejaVuSans", "Tajawal", Arial';
+      // Draw role name with better styling - using fonts with better Arabic support first
+      ctx.font = 'bold 24px "Amiri", sans-serif';
       
       // Draw text with glow effect
       ctx.shadowColor = 'rgba(87, 242, 135, 0.7)';
@@ -327,8 +343,8 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
       drawRoundedRect(ctx, textX, textY, textWidth, textHeight, 10);
       ctx.fill();
       
-      // Draw role name with better styling
-      ctx.font = 'bold 24px "Amiri", "DejaVuSans", "Tajawal", Arial';
+      // Draw role name with better styling - using fonts with better Arabic support first
+      ctx.font = 'bold 24px "Amiri", sans-serif';
       
       // Draw text with glow effect
       ctx.shadowColor = 'rgba(237, 66, 69, 0.7)';
@@ -354,8 +370,8 @@ export async function createRolesDistributionCanvas(roles: RoleType[]): Promise<
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
     
-    // Nicer font and size
-    ctx.font = 'bold 28px "Amiri", "DejaVuSans", "Tajawal", "Arial"';
+    // Nicer font and size using Amiri as requested
+    ctx.font = 'bold 28px "Amiri", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText('ستصلك رسالة خاصة بدورك خلال لحظات', canvas.width / 2, canvas.height - 30);
@@ -385,8 +401,8 @@ async function createSimpleRolesCanvas(roles: RoleType[]): Promise<Buffer> {
   ctx.fillStyle = '#2E1A47';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
-  // Title
-  ctx.font = 'bold 40px "Amiri", "DejaVuSans", "Tajawal", Arial';
+  // Title - using Amiri font as requested
+  ctx.font = 'bold 40px "Amiri", sans-serif';
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'center';
   ctx.fillText('توزيع الأدوار', canvas.width / 2, 60);
@@ -417,15 +433,15 @@ async function createSimpleRolesCanvas(roles: RoleType[]): Promise<Buffer> {
     ctx.textAlign = 'center';
     ctx.fillText(getRoleEmoji(role), x + roleSize / 2, y + roleSize / 2 + 12);
     
-    // Draw role name
-    ctx.font = '18px "Amiri", "DejaVuSans", "Tajawal", Arial';
+    // Draw role name with Amiri font as requested
+    ctx.font = '18px "Amiri", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.fillText(getRoleDisplayName(role), x + roleSize / 2, y + roleSize + 30);
   }
   
-  // Footer
-  ctx.font = '18px "Amiri", "DejaVuSans", "Tajawal", Arial';
+  // Footer with Amiri font as requested
+  ctx.font = '18px "Amiri", sans-serif';
   ctx.fillStyle = '#B9BBBE';
   ctx.textAlign = 'center';
   ctx.fillText('ستصلك رسالة خاصة بدورك خلال لحظات', canvas.width / 2, canvas.height - 40);
