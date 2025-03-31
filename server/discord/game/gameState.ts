@@ -52,6 +52,8 @@ export class GameState {
   public votes: Map<string, string>;
   // لتخزين ضحية المستذئبين في الليلة الحالية
   public currentNightVictim: string | null;
+  // مؤقت مرحلة النقاش
+  public discussionTimer?: NodeJS.Timeout;
   
   constructor(id: number, ownerId: string) {
     this.id = id;

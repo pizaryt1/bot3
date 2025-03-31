@@ -80,6 +80,35 @@ export async function startNightPhase(gameId: number, interaction: ButtonInterac
       files: [nightAttachment]
     });
     
+    // إنشاء رسالة عامة عن إجراءات الليل
+    const nightActionEmbed = new EmbedBuilder()
+      .setTitle(`🔮 إجراءات الليل - اليوم ${gameState.day}`)
+      .setColor('#191970')
+      .setDescription(`
+      # أدوار الليل تنشط الآن...
+      
+      **العراف** يستخدم قدراته للكشف عن هوية أحد اللاعبين.
+      
+      **الحارس** يحمي أحد سكان القرية من هجمات الليل.
+      
+      **المستذئبون** يجتمعون لاختيار ضحيتهم.
+      
+      **القناص** يستهدف مشتبه به بطلقة واحدة.
+      
+      **المحقق** يكشف عن انتماءات اللاعبين.
+      
+      **المنعش** يمكنه إعادة لاعب ميت إلى الحياة.
+      
+      **الساحر** يختار بين الحماية أو القتل.
+      
+      *سيتلقى كل لاعب رسالة خاصة لاستخدام قدراته أو لاستلام معلومات خاصة به.*
+      `);
+    
+    // إرسال رسالة عامة عن إجراءات الليل
+    await (channel as TextChannel).send({
+      embeds: [nightActionEmbed]
+    });
+    
     // إرسال رسائل الإجراءات الليلية لكل لاعب
     await sendNightActionButtons(gameState);
     
@@ -138,7 +167,8 @@ async function sendNightActionButtons(gameState: GameState) {
         break;
         
       case 'villager':
-        // القرويون العاديون ليس لديهم إجراءات ليلية
+        // إرسال رسالة انتظار للقرويين العاديين
+        await sendVillagerNightMessage(gameState, player);
         break;
     }
   }
@@ -323,23 +353,29 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
       return;
     }
     
-    // إنشاء قائمة منسدلة للاختيار بين اللاعبين
-    const selectOptions: SelectMenuComponentOptionData[] = alivePlayers.map(p => ({
-      label: p.username,
-      value: p.id,
-      description: `حماية ${p.username} من الموت هذه الليلة`,
-      emoji: '🛡️'
-    }));
+    // إنشاء أزرار اختيار اللاعبين
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
     
-    // إنشاء قائمة منسدلة
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`guardian_action_${gameState.id}`)
-      .setPlaceholder('اختر لاعب لحمايته')
-      .addOptions(selectOptions);
-    
-    // إنشاء صف الأزرار
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-      .addComponents(selectMenu);
+    // إنشاء مجموعات من الأزرار (3 أزرار كحد أقصى في كل صف)
+    for (let i = 0; i < alivePlayers.length; i += 3) {
+      const currentRow = new ActionRowBuilder<ButtonBuilder>();
+      
+      // إضافة أزرار للاعبين في هذا الصف
+      for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
+        const player = alivePlayers[j];
+        
+        // إنشاء زر لكل لاعب
+        const button = new ButtonBuilder()
+          .setCustomId(`guardian_action_${gameState.id}_${player.id}`)
+          .setLabel(`${j} ${player.username}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('🛡️');
+        
+        currentRow.addComponents(button);
+      }
+      
+      buttonRows.push(currentRow);
+    }
     
     // إنشاء رسالة الإجراء
     const actionEmbed = new EmbedBuilder()
@@ -354,11 +390,11 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
       *لا يمكنك حماية نفس الشخص ليلتين متتاليتين.*
       `);
     
-    // إرسال الرسالة مع قائمة الاختيار
+    // إرسال الرسالة مع أزرار الاختيار
     if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء الحارس: ${error}`, 'discord-game');
@@ -393,23 +429,29 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
       return;
     }
     
-    // إنشاء قائمة منسدلة للاختيار بين اللاعبين
-    const selectOptions: SelectMenuComponentOptionData[] = alivePlayers.map(p => ({
-      label: p.username,
-      value: p.id,
-      description: `التحقيق في دور ${p.username}`,
-      emoji: '🔍'
-    }));
+    // إنشاء أزرار اختيار اللاعبين
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
     
-    // إنشاء قائمة منسدلة
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`detective_action_${gameState.id}`)
-      .setPlaceholder('اختر لاعب للتحقيق')
-      .addOptions(selectOptions);
-    
-    // إنشاء صف الأزرار
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-      .addComponents(selectMenu);
+    // إنشاء مجموعات من الأزرار (3 أزرار كحد أقصى في كل صف)
+    for (let i = 0; i < alivePlayers.length; i += 3) {
+      const currentRow = new ActionRowBuilder<ButtonBuilder>();
+      
+      // إضافة أزرار للاعبين في هذا الصف
+      for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
+        const player = alivePlayers[j];
+        
+        // إنشاء زر لكل لاعب
+        const button = new ButtonBuilder()
+          .setCustomId(`detective_action_${gameState.id}_${player.id}`)
+          .setLabel(`${j} ${player.username}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('🔍');
+        
+        currentRow.addComponents(button);
+      }
+      
+      buttonRows.push(currentRow);
+    }
     
     // إنشاء رسالة الإجراء
     const actionEmbed = new EmbedBuilder()
@@ -424,11 +466,11 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
       *استخدم هذه المعلومات بحكمة، فقد تكون حاسمة لإنقاذ القرية.*
       `);
     
-    // إرسال الرسالة مع قائمة الاختيار
+    // إرسال الرسالة مع أزرار الاختيار
     if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المحقق: ${error}`, 'discord-game');
@@ -463,31 +505,41 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
       return;
     }
     
-    // إنشاء قائمة منسدلة للاختيار بين اللاعبين
-    const selectOptions: SelectMenuComponentOptionData[] = [
-      ...alivePlayers.map(p => ({
-        label: p.username,
-        value: p.id,
-        description: `إطلاق النار على ${p.username}`,
-        emoji: '🎯'
-      })),
-      {
-        label: 'لا تطلق النار',
-        value: 'skip',
-        description: 'احتفظ برصاصتك لليلة أخرى',
-        emoji: '⏭️'
+    // إنشاء أزرار اختيار اللاعبين
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
+    
+    // إنشاء مجموعات من الأزرار (3 أزرار كحد أقصى في كل صف)
+    for (let i = 0; i < alivePlayers.length; i += 3) {
+      const currentRow = new ActionRowBuilder<ButtonBuilder>();
+      
+      // إضافة أزرار للاعبين في هذا الصف
+      for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
+        const player = alivePlayers[j];
+        
+        // إنشاء زر لكل لاعب
+        const button = new ButtonBuilder()
+          .setCustomId(`sniper_action_${gameState.id}_${player.id}`)
+          .setLabel(`${j} ${player.username}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('🎯');
+        
+        currentRow.addComponents(button);
       }
-    ];
+      
+      buttonRows.push(currentRow);
+    }
     
-    // إنشاء قائمة منسدلة
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`sniper_action_${gameState.id}`)
-      .setPlaceholder('اختر هدفًا أو احتفظ برصاصتك')
-      .addOptions(selectOptions);
+    // إضافة زر "تخطي" في صف جديد
+    const skipRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`sniper_action_${gameState.id}_skip`)
+          .setLabel('لا تطلق النار')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('⏭️')
+      );
     
-    // إنشاء صف الأزرار
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-      .addComponents(selectMenu);
+    buttonRows.push(skipRow);
     
     // إنشاء رسالة الإجراء
     const actionEmbed = new EmbedBuilder()
@@ -502,14 +554,49 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
       *تذكر: لديك طلقتان فقط طوال اللعبة، فاستخدمهما بحكمة.*
       `);
     
-    // إرسال الرسالة مع قائمة الاختيار
+    // إرسال الرسالة مع أزرار الاختيار
     if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء القناص: ${error}`, 'discord-game');
+  }
+}
+
+/**
+ * إرسال رسالة انتظار للقرويين العاديين أثناء الليل
+ */
+async function sendVillagerNightMessage(gameState: GameState, player: Player) {
+  try {
+    // الحصول على التفاعل المخزن للاعب
+    const interaction = getStoredInteraction(player.id);
+    if (!interaction) return;
+    
+    // إنشاء رسالة الانتظار للقروي
+    const villagerEmbed = new EmbedBuilder()
+      .setTitle('🛌 وقت النوم للقرويين')
+      .setColor('#2E8B57')
+      .setDescription(`
+      ## القرية نائمة والمستذئبون مستيقظون
+      
+      أنت قروي عادي وليس لديك قدرات خاصة في الليل.
+      خلد للنوم والراحة بينما يستخدم الآخرون قدراتهم الخاصة.
+      
+      **يرجى الانتظار حتى تنتهي المرحلة الليلية.**
+      
+      *تذكر: في النقاش النهاري، يجب عليك المشاركة في النقاش والتصويت ضد المستذئبين المشتبه بهم!*
+      `);
+    
+    // إرسال الرسالة للقروي
+    if (interaction.replied) {
+      await interaction.followUp({ embeds: [villagerEmbed], ephemeral: true });
+    } else {
+      await interaction.reply({ embeds: [villagerEmbed], ephemeral: true });
+    }
+  } catch (error) {
+    log(`خطأ في إرسال رسالة الانتظار للقروي: ${error}`, 'discord-game');
   }
 }
 
@@ -526,31 +613,43 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
     const deadPlayers = Array.from(gameState.players.values())
       .filter(p => !p.isAlive);
     
-    // إضافة خيار تخطي الإحياء
-    const selectOptions: SelectMenuComponentOptionData[] = [
-      ...deadPlayers.map(p => ({
-        label: p.username,
-        value: p.id,
-        description: `إحياء ${p.username}`,
-        emoji: '💓'
-      })),
-      {
-        label: 'لا تحيي أحداً',
-        value: 'skip',
-        description: 'احتفظ بقدرتك لوقت لاحق',
-        emoji: '⏭️'
+    // إنشاء أزرار اختيار اللاعبين الميتين
+    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
+    
+    // إنشاء مجموعات من الأزرار (3 أزرار كحد أقصى في كل صف)
+    for (let i = 0; i < deadPlayers.length; i += 3) {
+      const currentRow = new ActionRowBuilder<ButtonBuilder>();
+      
+      // إضافة أزرار للاعبين في هذا الصف
+      for (let j = i; j < Math.min(i + 3, deadPlayers.length); j++) {
+        const player = deadPlayers[j];
+        
+        // إنشاء زر لكل لاعب
+        const button = new ButtonBuilder()
+          .setCustomId(`reviver_action_${gameState.id}_${player.id}`)
+          .setLabel(`${j} ${player.username}`)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('💓');
+        
+        currentRow.addComponents(button);
       }
-    ];
+      
+      buttonRows.push(currentRow);
+    }
     
-    // إنشاء قائمة منسدلة
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`reviver_action_${gameState.id}`)
-      .setPlaceholder('اختر لاعباً لإحيائه أو تخطي')
-      .addOptions(selectOptions);
+    // إضافة زر "تخطي" في صف جديد
+    const skipRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`reviver_action_${gameState.id}_skip`)
+          .setLabel('لا تحيي أحداً')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('⏭️')
+      );
     
-    // إنشاء صف الأزرار
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-      .addComponents(selectMenu);
+    buttonRows.push(skipRow);
+    
+
     
     // إنشاء رسالة الإجراء
     const actionEmbed = new EmbedBuilder()
@@ -565,11 +664,11 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
       *اختر بحكمة من تريد إحياءه، أو احتفظ بقدرتك لوقت لاحق.*
       `);
     
-    // إرسال الرسالة مع قائمة الاختيار
+    // إرسال الرسالة مع أزرار الاختيار
     if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المنعش: ${error}`, 'discord-game');
@@ -683,7 +782,11 @@ export async function startDayPhase(gameId: number, interaction: ButtonInteracti
         
         لقد كان **${getRoleDisplayName(victim.role as RoleType)}** ${getRoleEmoji(victim.role as RoleType)}
         
-        *على القرية أن تناقش من هو المسؤول عن هذه الجريمة. استعدوا للتصويت!*
+        *على القرية أن تناقش من هو المسؤول عن هذه الجريمة وما حدث في الليل.*
+        
+        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
+        
+        *نقاش مفتوح لمدة 60 ثانية...*
         `)
         .setImage('attachment://القتل.png');
       
@@ -704,7 +807,11 @@ export async function startDayPhase(gameId: number, interaction: ButtonInteracti
         
         بفضل حماية خفية، نجا **${victim.username}** من هجوم الليلة الماضية!
         
-        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم. استعدوا للتصويت!*
+        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم وما حدث في الليل.*
+        
+        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
+        
+        *نقاش مفتوح لمدة 60 ثانية...*
         `)
         .setImage('attachment://حماية.png');
       
@@ -719,24 +826,28 @@ export async function startDayPhase(gameId: number, interaction: ButtonInteracti
         
         لقد مرت الليلة بسلام، ولم يُقتل أحد!
         
-        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم. استعدوا للتصويت!*
+        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم وما حدث في الليل.*
+        
+        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
+        
+        *نقاش مفتوح لمدة 60 ثانية...*
         `);
       
       dayAttachment = new AttachmentBuilder(path.join('attached_assets', 'بداية.webp'));
     }
     
-    // إضافة زر التصويت
-    const voteButton = new ButtonBuilder()
-      .setCustomId(`start_voting_${gameId}`)
-      .setLabel('بدء التصويت')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🗳️');
+    // إضافة زر إنهاء النقاش (متاح فقط لمالك اللعبة)
+    const endDiscussionButton = new ButtonBuilder()
+      .setCustomId(`end_discussion_${gameId}`)
+      .setLabel('إنهاء النقاش')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('⏭️');
     
     const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(voteButton);
+      .addComponents(endDiscussionButton);
     
     // إرسال رسالة النهار
-    await (channel as TextChannel).send({
+    const dayMessage = await (channel as TextChannel).send({
       embeds: [dayEmbed],
       files: [dayAttachment],
       components: [row]
@@ -749,6 +860,89 @@ export async function startDayPhase(gameId: number, interaction: ButtonInteracti
       }, 3000);
       return;
     }
+
+    // مؤقت الوقت المتبقي للنقاش
+    let timeLeft = 60; // 60 ثانية
+    
+    // إنشاء رسالة المؤقت
+    const timerEmbed = new EmbedBuilder()
+      .setTitle('⏱️ الوقت المتبقي للنقاش')
+      .setColor('#FFD700')
+      .setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيبدأ التصويت تلقائيًا.`);
+    
+    const timerMessage = await (channel as TextChannel).send({
+      embeds: [timerEmbed]
+    });
+    
+    // المسجات التشويقية للنقاش
+    const suspenseMessages = [
+      '👁️ **عيون المستذئبين تراقب الجميع... من تشك فيه؟**',
+      '🤔 **ألم تلاحظوا سلوك أحدهم المريب أثناء الليل؟**',
+      '💬 **هل يقول الجميع الحقيقة؟ انتبهوا للتناقضات...**',
+      '🔍 **الحقيقة تختبئ في التفاصيل الصغيرة... استمعوا جيدًا!**',
+      '⚠️ **لا تدعوا المستذئبين يخدعونكم. فكروا في كل احتمال!**',
+      '🗯️ **من الصامت بينكم؟ ربما يخفي شيئًا مهمًا...**',
+      '🌙 **ماذا رأيتم في الليل؟ كل معلومة قد تكون مفتاح النجاة!**'
+    ];
+    
+    // خلط الرسائل التشويقية
+    suspenseMessages.sort(() => Math.random() - 0.5);
+    
+    // مؤقت لتحديث الوقت المتبقي ونشر رسائل التشويق
+    const timer = setInterval(async () => {
+      timeLeft--;
+      
+      // تحديث رسالة المؤقت
+      timerEmbed.setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيبدأ التصويت تلقائيًا.`);
+      await timerMessage.edit({ embeds: [timerEmbed] });
+      
+      // نشر رسائل تشويقية كل 8 ثواني
+      if (timeLeft % 8 === 0 && timeLeft > 0) {
+        const suspenseIndex = Math.floor((60 - timeLeft) / 8) % suspenseMessages.length;
+        
+        // تحقق من اللاعبين الذين لم يتحدثوا بعد
+        const alivePlayers = gameState.getAlivePlayers();
+        let quiet = false;
+        let quietPlayer = null;
+        
+        // هنا يمكن إضافة منطق لتحديد اللاعبين الصامتين بشكل عشوائي
+        if (alivePlayers.length > 0 && Math.random() > 0.7) {
+          quietPlayer = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+          quiet = true;
+        }
+        
+        const suspenseEmbed = new EmbedBuilder()
+          .setColor('#FFB900')
+          .setTitle('💭 أفكار القرية');
+        
+        if (quiet && quietPlayer) {
+          suspenseEmbed.setDescription(`${suspenseMessages[suspenseIndex]}\n\n👀 **<@${quietPlayer.id}> لم يتحدث كثيرًا... ربما يخفي شيئًا؟**`);
+        } else {
+          suspenseEmbed.setDescription(suspenseMessages[suspenseIndex]);
+        }
+        
+        await (channel as TextChannel).send({ embeds: [suspenseEmbed] });
+      }
+      
+      // إذا انتهى الوقت، بدء التصويت تلقائيًا
+      if (timeLeft <= 0) {
+        clearInterval(timer);
+        await (channel as TextChannel).send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('⌛ انتهى وقت النقاش!')
+              .setColor('#FF6B00')
+              .setDescription('**حان وقت التصويت! أدلوا بأصواتكم للتخلص من أحد المشتبه فيهم.**')
+          ]
+        });
+        
+        // بدء مرحلة التصويت
+        await startVotingPhase(gameId, interaction);
+      }
+    }, 1000);
+    
+    // تسجيل المؤقت في حالة اللعبة لإيقافه إذا تم إنهاء النقاش مبكرًا
+    gameState.discussionTimer = timer;
     
     return true;
   } catch (error) {
@@ -1200,6 +1394,44 @@ export function registerGamePhaseButtons(client: any) {
         await interaction.deferUpdate();
         startNightPhase(gameId, interaction);
       }
+      else if (customId.startsWith('end_discussion_')) {
+        // إنهاء النقاش والانتقال إلى مرحلة التصويت
+        // التحقق من أن الضاغط على الزر هو مالك اللعبة
+        if (interaction.user.id !== gameState.ownerId) {
+          await interaction.reply({
+            content: 'فقط مالك اللعبة يمكنه إنهاء النقاش',
+            ephemeral: true
+          });
+          return;
+        }
+        
+        // إيقاف المؤقت إذا كان موجودًا
+        if (gameState.discussionTimer) {
+          clearInterval(gameState.discussionTimer);
+        }
+        
+        await interaction.deferUpdate();
+        
+        // إرسال رسالة بإنهاء النقاش
+        const game = await storage.getGame(gameId);
+        if (game && game.channelId) {
+          const client = getClient();
+          const channel = await client.channels.fetch(game.channelId);
+          if (channel && channel.isTextBased()) {
+            await (channel as TextChannel).send({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle('⏹️ تم إنهاء النقاش')
+                  .setColor('#FF6B00')
+                  .setDescription('**قرر مالك اللعبة إنهاء النقاش مبكرًا. حان وقت التصويت!**')
+              ]
+            });
+          }
+        }
+        
+        // بدء مرحلة التصويت
+        startVotingPhase(gameId, interaction);
+      }
       else if (customId.startsWith('start_voting_')) {
         // بدء مرحلة التصويت
         await interaction.deferUpdate();
@@ -1310,9 +1542,10 @@ export function registerGamePhaseButtons(client: any) {
           }, 2000);
         }
       }
-      else if (customId.startsWith('guardian_action_') && interaction.isStringSelectMenu()) {
+      else if (customId.startsWith('guardian_action_') && interaction.isButton()) {
         // إجراء الحارس - حماية لاعب
-        const targetId = interaction.values[0];
+        const parts = customId.split('_');
+        const targetId = parts[parts.length - 1];
         
         // الحصول على اللاعب المستهدف
         const target = gameState.getPlayer(targetId);
@@ -1349,9 +1582,10 @@ export function registerGamePhaseButtons(client: any) {
           }, 2000);
         }
       }
-      else if (customId.startsWith('detective_action_') && interaction.isStringSelectMenu()) {
+      else if (customId.startsWith('detective_action_') && interaction.isButton()) {
         // إجراء المحقق - كشف الدور المحدد
-        const targetId = interaction.values[0];
+        const parts = customId.split('_');
+        const targetId = parts[parts.length - 1];
         
         // الحصول على اللاعب المستهدف
         const target = gameState.getPlayer(targetId);
@@ -1396,9 +1630,10 @@ export function registerGamePhaseButtons(client: any) {
           }, 2000);
         }
       }
-      else if (customId.startsWith('sniper_action_') && interaction.isStringSelectMenu()) {
+      else if (customId.startsWith('sniper_action_') && interaction.isButton()) {
         // إجراء القناص - إطلاق النار على لاعب
-        const targetId = interaction.values[0];
+        const parts = customId.split('_');
+        const targetId = parts[parts.length - 1];
         
         // التحقق مما إذا كان اللاعب قد اختار التخطي
         if (targetId === 'skip') {
@@ -1487,9 +1722,10 @@ export function registerGamePhaseButtons(client: any) {
           }, 2000);
         }
       }
-      else if (customId.startsWith('reviver_action_') && interaction.isStringSelectMenu()) {
+      else if (customId.startsWith('reviver_action_') && interaction.isButton()) {
         // إجراء المنعش - إحياء لاعب
-        const targetId = interaction.values[0];
+        const parts = customId.split('_');
+        const targetId = parts[parts.length - 1];
         
         // التحقق مما إذا كان اللاعب قد اختار التخطي
         if (targetId === 'skip') {
@@ -1770,9 +2006,10 @@ export function registerGamePhaseButtons(client: any) {
           }, 2000);
         }
       }
-      else if (customId.startsWith('vote_player_') && interaction.isStringSelectMenu()) {
+      else if (customId.startsWith('vote_player_') && interaction.isButton()) {
         // إجراء التصويت على لاعب
-        const targetId = interaction.values[0];
+        const parts = customId.split('_');
+        const targetId = parts[parts.length - 1];
         
         // الحصول على اللاعب المستهدف
         const target = gameState.getPlayer(targetId);
