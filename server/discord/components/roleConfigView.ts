@@ -278,11 +278,18 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
       return;
     }
     
+    // First, defer the reply to the interaction to avoid timeout
+    await interaction.deferUpdate();
+    
     // Add a notice about how roles are distributed
-    await interaction.followUp({
-      content: `⚠️ **ملاحظة هامة**: سيتم توزيع الأدوار بشكل أساسي حسب عدد اللاعبين (${players.length} لاعبين) مع مراعاة الأدوار المفعلة. التوزيع النهائي قد يختلف عن الأدوار المفعلة إذا تطلب ذلك توازن اللعبة.`,
-      ephemeral: true
-    });
+    try {
+      await interaction.followUp({
+        content: `⚠️ **ملاحظة هامة**: سيتم توزيع الأدوار بشكل أساسي حسب عدد اللاعبين (${players.length} لاعبين) مع مراعاة الأدوار المفعلة. التوزيع النهائي قد يختلف عن الأدوار المفعلة إذا تطلب ذلك توازن اللعبة.`,
+        ephemeral: true
+      });
+    } catch (error) {
+      log(`Error sending followUp message: ${error}`, 'discord-game');
+    }
     
     // Assign roles to players
     gameManager.assignRoles(gameId, enabledRoles);
@@ -291,11 +298,16 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     const { embed, components, files } = await createRoleDistributionEmbed(gameId, enabledRoles);
     
     // Update the game message
-    await interaction.update({
-      embeds: [embed],
-      components: components || [],
-      files: files || []
-    });
+    try {
+      // Use editReply instead of update since we've already deferred
+      await interaction.editReply({
+        embeds: [embed],
+        components: components || [],
+        files: files || []
+      });
+    } catch (error) {
+      log(`Error updating game message: ${error}`, 'discord-game');
+    }
     
     // Send role assignments to players
     setTimeout(() => {
