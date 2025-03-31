@@ -161,13 +161,10 @@ export async function handleInitialViewButtons(interaction: ButtonInteraction) {
     
     await updatePlayerList(gameId, interaction);
     
-    // Store interaction for later use after responding
-    await interaction.reply({
-      content: 'تم انضمامك إلى اللعبة بنجاح!',
-      ephemeral: true
-    });
+    // استجابة صامتة للتفاعل بدون إظهار رسالة
+    await interaction.deferUpdate();
     
-    // Store interaction AFTER reply for DM permissions
+    // Store interaction for later use
     storeInteraction(interaction.user.id, interaction);
   }
   // Leave button
