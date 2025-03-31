@@ -1,129 +1,125 @@
-import { 
-  ButtonInteraction, 
-  ChatInputCommandInteraction, 
-  CommandInteraction, 
-  MessageComponentInteraction,
-  User,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  StringSelectMenuBuilder,
-  DMChannel
-} from 'discord.js';
+/**
+ * وحدة تخزين التفاعلات
+ * 
+ * يتم استخدام هذا الملف لتخزين واسترجاع التفاعلات من Discord
+ * بحيث يمكن استخدامها لاحقًا لإرسال متابعات للتفاعلات
+ */
+
 import { log } from '../../vite';
-import { getClient } from '../bot';
+import { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
 
-// Type for stored interactions
-type StoredInteraction = ButtonInteraction | ChatInputCommandInteraction | MessageComponentInteraction;
+// نوع التفاعل - إما تفاعل أمر أو تفاعل زر
+type StoredInteraction = ButtonInteraction | ChatInputCommandInteraction;
 
-// Map to store interactions by user ID
-let interactionStorage: Map<string, StoredInteraction> = new Map();
+// خريطة لتخزين التفاعلات حسب معرّف المستخدم
+const interactionStorage: Map<string, StoredInteraction> = new Map();
 
-// Map to store DM channels by user ID
-let dmChannelStorage: Map<string, DMChannel> = new Map();
-
-// Initialize the interaction storage
-export function initializeInteractionStorage() {
-  interactionStorage = new Map();
-  dmChannelStorage = new Map();
-  log('Interaction storage initialized', 'discord');
+// معلومات المستخدم في اللعبة
+interface UserGameInfo {
+  gameId: number;
+  username: string;
+  channelId: string;
 }
 
-// Store an interaction for future use
-export function storeInteraction(userId: string, interaction: StoredInteraction) {
+// خريطة لتخزين معلومات المستخدمين حسب معرّف المستخدم
+const userGameInfoStorage: Map<string, UserGameInfo> = new Map();
+
+/**
+ * تخزين تفاعل لاستخدامه لاحقًا
+ * @param userId معرّف المستخدم
+ * @param interaction التفاعل المراد تخزينه
+ */
+export function storeInteraction(userId: string, interaction: StoredInteraction): void {
   interactionStorage.set(userId, interaction);
-  log(`Stored interaction for user ${userId}`, 'discord-debug');
-  
-  // Set a timeout to clean up the interaction after some time
-  setTimeout(() => {
-    if (interactionStorage.has(userId)) {
-      interactionStorage.delete(userId);
-      log(`Cleaned up stored interaction for user ${userId}`, 'discord-debug');
-    }
-  }, 1000 * 60 * 10); // Clean up after 10 minutes
+  log(`تخزين التفاعل للمستخدم ${userId}`, 'interaction-storage');
 }
 
-// Get a stored interaction
+/**
+ * الحصول على تفاعل مخزن لمستخدم معين
+ * @param userId معرّف المستخدم
+ * @returns التفاعل المخزن، أو undefined إذا لم يوجد
+ */
 export function getStoredInteraction(userId: string): StoredInteraction | undefined {
-  return interactionStorage.get(userId);
-}
-
-// Remove a stored interaction
-export function removeStoredInteraction(userId: string): boolean {
-  return interactionStorage.delete(userId);
-}
-
-// Store a DM channel for future use
-export async function storeDMChannel(userId: string): Promise<DMChannel | null> {
-  try {
-    const client = getClient();
-    const user = await client.users.fetch(userId);
-    if (!user) return null;
-    
-    const dmChannel = await user.createDM();
-    dmChannelStorage.set(userId, dmChannel);
-    log(`Stored DM channel for user ${userId}`, 'discord-debug');
-    return dmChannel;
-  } catch (error) {
-    log(`Error storing DM channel for user ${userId}: ${error}`, 'discord');
-    return null;
+  const interaction = interactionStorage.get(userId);
+  if (interaction) {
+    log(`تم استرجاع التفاعل للمستخدم ${userId}`, 'interaction-storage');
+  } else {
+    log(`لا يوجد تفاعل مخزن للمستخدم ${userId}`, 'interaction-storage');
   }
+  return interaction;
 }
 
-// Get a stored DM channel, or create one if it doesn't exist
-export async function getDMChannel(userId: string): Promise<DMChannel | null> {
-  if (dmChannelStorage.has(userId)) {
-    return dmChannelStorage.get(userId) as DMChannel;
+/**
+ * إزالة تفاعل مخزن لمستخدم معين
+ * @param userId معرّف المستخدم
+ * @returns true إذا تم العثور على التفاعل وحذفه، false إذا لم يتم العثور عليه
+ */
+export function removeStoredInteraction(userId: string): boolean {
+  const hadInteraction = interactionStorage.has(userId);
+  interactionStorage.delete(userId);
+  
+  if (hadInteraction) {
+    log(`تم حذف التفاعل للمستخدم ${userId}`, 'interaction-storage');
+    return true;
   }
   
-  return await storeDMChannel(userId);
+  return false;
 }
 
-// Send an ephemeral message to a user using their stored interaction
-// هذه الوظيفة لا تستخدم الرسائل المباشرة، بل تستخدم الرسائل المخفية في الشات العام فقط
-export async function sendEphemeralReply(
-  userId: string, 
-  content?: string, 
-  embeds: EmbedBuilder[] = [], 
-  components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = []
-): Promise<boolean> {
-  try {
-    const interaction = getStoredInteraction(userId);
-    if (!interaction) {
-      log(`No stored interaction found for user ${userId}, cannot send ephemeral message`, 'discord');
-      return false;
-    }
-    
-    // تحقق مما إذا كان التفاعل قد تم الرد عليه بالفعل
-    if (interaction.replied) {
-      await interaction.followUp({ 
-        content, 
-        embeds, 
-        components,
-        ephemeral: true 
-      });
-    } else {
-      await interaction.reply({ 
-        content, 
-        embeds, 
-        components,
-        ephemeral: true 
-      });
-    }
-    return true;
-  } catch (error) {
-    log(`Error sending ephemeral message to user ${userId}: ${error}`, 'discord');
-    return false;
-  }
-}
-
-// Get all stored interactions
-export function getAllStoredInteractions(): Map<string, StoredInteraction> {
-  return interactionStorage;
-}
-
-// Clear all stored interactions
-export function clearAllStoredInteractions(): void {
+/**
+ * حذف جميع التفاعلات المخزنة
+ */
+export function clearAllInteractions(): void {
   interactionStorage.clear();
-  log('Cleared all stored interactions', 'discord');
+  log('تم حذف جميع التفاعلات المخزنة', 'interaction-storage');
+}
+
+/**
+ * تخزين معلومات مستخدم في لعبة
+ * @param gameId معرّف اللعبة
+ * @param userId معرّف المستخدم
+ * @param username اسم المستخدم
+ * @param channelId معرّف القناة
+ */
+export function storeUserForGame(gameId: number, userId: string, username: string, channelId: string): void {
+  userGameInfoStorage.set(userId, {
+    gameId,
+    username,
+    channelId
+  });
+  log(`تم تخزين معلومات المستخدم ${username} (${userId}) للعبة ${gameId}`, 'interaction-storage');
+}
+
+/**
+ * الحصول على معلومات مستخدم مخزنة
+ * @param userId معرّف المستخدم
+ * @returns معلومات المستخدم، أو undefined إذا لم توجد
+ */
+export function getUserGameInfo(userId: string): UserGameInfo | undefined {
+  return userGameInfoStorage.get(userId);
+}
+
+/**
+ * حذف معلومات مستخدم
+ * @param userId معرّف المستخدم
+ * @returns true إذا تم العثور على المعلومات وحذفها، false إذا لم يتم العثور عليها
+ */
+export function removeUserGameInfo(userId: string): boolean {
+  const hadInfo = userGameInfoStorage.has(userId);
+  userGameInfoStorage.delete(userId);
+  
+  if (hadInfo) {
+    log(`تم حذف معلومات المستخدم ${userId}`, 'interaction-storage');
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * حذف جميع معلومات المستخدمين المخزنة
+ */
+export function clearAllUserInfo(): void {
+  userGameInfoStorage.clear();
+  log('تم حذف جميع معلومات المستخدمين المخزنة', 'interaction-storage');
 }

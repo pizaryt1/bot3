@@ -54,6 +54,8 @@ export class GameState {
   public currentNightVictim: string | null;
   // مؤقت مرحلة النقاش
   public discussionTimer?: NodeJS.Timeout;
+  // مؤقت مرحلة التصويت
+  public votingTimer?: NodeJS.Timeout;
   
   constructor(id: number, ownerId: string) {
     this.id = id;

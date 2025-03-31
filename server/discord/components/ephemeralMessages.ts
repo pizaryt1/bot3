@@ -8,12 +8,57 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   MessageComponentInteraction,
-  ChatInputCommandInteraction
+  ChatInputCommandInteraction,
+  TextChannel
 } from 'discord.js';
 import { RoleType } from '@shared/schema';
-import { getStoredInteraction, sendEphemeralReply } from '../utils/interactionStorage';
+import { getStoredInteraction } from '../utils/interactionStorage';
 import { createRoleAssignmentEmbed } from './roleDistributionView';
 import { log } from '../../vite';
+import { storage } from '../../storage';
+import { getClient } from '../bot';
+
+// إرسال رسالة مخفية باستخدام التفاعل المخزّن
+export async function sendEphemeralReply(
+  userId: string,
+  content?: string,
+  embeds?: EmbedBuilder[],
+  components?: ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>[],
+  files?: any[]
+) {
+  try {
+    const interaction = getStoredInteraction(userId);
+    
+    if (!interaction) {
+      log(`لا يوجد تفاعل مخزن للمستخدم ${userId}`, 'discord');
+      return false;
+    }
+    
+    // التحقق مما إذا كان التفاعل قد تم الرد عليه مسبقًا
+    if (interaction.replied) {
+      await interaction.followUp({
+        content,
+        embeds,
+        components,
+        files,
+        ephemeral: true
+      });
+    } else {
+      await interaction.reply({
+        content,
+        embeds,
+        components,
+        files,
+        ephemeral: true
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    log(`خطأ في إرسال رسالة مخفية للمستخدم ${userId}: ${error}`, 'discord');
+    return false;
+  }
+}
 
 // Send ephemeral message to a player using their stored interaction
 export async function sendEphemeralMessage(
@@ -64,47 +109,92 @@ export async function sendRoleAssignment(
   try {
     const roleDescription = getRoleDescription(role);
     const { embed, files } = createRoleAssignmentEmbed(role, roleDescription, teammates);
+    const content = `تم تعيينك كـ ${getRoleDisplayName(role)}`;
     
-    // محاولة أولى باستخدام التفاعل المخزن
+    // محاولة أولى - الطريقة الجديدة باستخدام التفاعل المخزن
     const interaction = getStoredInteraction(userId);
     
     if (interaction) {
       try {
-        // Check if the interaction has already been replied to
+        // التحقق مما إذا كان التفاعل قد تم الرد عليه مسبقًا
         if (interaction.replied) {
           await interaction.followUp({ 
-            content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
+            content: content,
             embeds: [embed],
             files: files,
             ephemeral: true 
           });
+          log(`Role assignment sent to ${username} (${userId}) via followUp`, 'discord-debug');
+          return true;
         } else {
           await interaction.reply({ 
-            content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
+            content: content,
             embeds: [embed],
             files: files,
             ephemeral: true 
           });
+          log(`Role assignment sent to ${username} (${userId}) via reply`, 'discord-debug');
+          return true;
         }
-        return true;
       } catch (interactionError) {
-        log(`Error using interaction for role assignment to ${userId}, falling back to DM: ${interactionError}`, 'discord');
-        // في حالة حدوث خطأ، المتابعة لاستخدام الرسائل المباشرة كخطة بديلة
+        log(`Error using stored interaction for role assignment to ${userId}: ${interactionError}`, 'discord');
       }
     }
     
-    // خطة بديلة: إرسال رسالة مخفية
-    const content = `تم تعيينك كـ ${getRoleDisplayName(role)}`;
-    const success = await sendEphemeralReply(userId, content, [embed]);
-    
-    // إذا نجحت الرسالة المخفية
-    if (success) {
-      log(`Role assignment sent to ${username} (${userId}) via ephemeral message`, 'discord-debug');
-      return true;
-    } else {
-      log(`Failed to send role assignment to ${username} (${userId}) - no stored interaction`, 'discord');
-      return false;
+    // تخطي محاولة الرسائل المخفية المباشرة نظرًا لأننا أزلنا الدالة
+    // استخدام sendEphemeralMessage بدلاً
+    try {
+      const success = await sendEphemeralMessage(
+        userId, 
+        content, 
+        embed,
+        []
+      );
+      
+      if (success) {
+        log(`Role assignment sent to ${username} (${userId}) via ephemeral message`, 'discord-debug');
+        return true;
+      }
+    } catch (ephemeralError) {
+      log(`Error sending ephemeral message to ${userId}: ${ephemeralError}`, 'discord');
     }
+    
+    // محاولة ثالثة - إرسال رسالة عامة مباشرة إلى القناة
+    try {
+      // نحتاج إلى معرفة أي لعبة ينتمي إليها هذا اللاعب
+      const games = await storage.getActiveGames();
+      for (const game of games) {
+        const players = await storage.getGamePlayers(game.id);
+        const player = players.find((p: any) => p.userId === userId);
+        
+        if (player) {
+          // وجدنا اللاعب في هذه اللعبة، نحاول إرسال رسالة إلى القناة
+          const channel = await getClient().channels.fetch(game.channelId) as TextChannel;
+          if (channel) {
+            await channel.send({
+              content: `<@${userId}> تم تعيين دورك! تحقق من الرسائل المباشرة للتفاصيل.`
+            });
+            
+            // ثم نرسل رسالة مباشرة
+            const user = await getClient().users.fetch(userId);
+            if (user) {
+              await user.send({
+                content: content,
+                embeds: [embed],
+                files: files
+              });
+              log(`Role assignment sent to ${username} (${userId}) via direct message`, 'discord-debug');
+              return true;
+            }
+          }
+        }
+      }
+    } catch (channelError) {
+      log(`Error sending channel message to ${userId}: ${channelError}`, 'discord');
+    }
+    
+    log(`Failed to send role assignment to ${username} (${userId}) - all methods failed`, 'discord');
+    return false;
   } catch (error) {
     log(`Error sending role assignment to ${userId}: ${error}`, 'discord');
     return false;

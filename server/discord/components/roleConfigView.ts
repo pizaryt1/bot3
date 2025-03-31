@@ -383,14 +383,7 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     setTimeout(() => {
       gameManager.sendRoleAssignments(gameId);
       
-      // بعد إرسال الأدوار، ابدأ مرحلة الليل الأولى
-      setTimeout(async () => {
-        try {
-          await startNightPhase(gameId, interaction);
-        } catch (error) {
-          log(`Error starting first night phase: ${error}`, 'discord-game');
-        }
-      }, 5000); // بدء الليل بعد 5 ثوانٍ من إرسال الأدوار
+      // تم نقل بدء مرحلة الليل إلى GameManager لتجنب الاستدعاء المزدوج
     }, 8000); // تأخير أطول قليلاً للتأكد من أن الصورة تم عرضها أولاً
   }
 }

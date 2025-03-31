@@ -3,9 +3,10 @@ import { log } from '../../vite';
 import { RoleType } from '@shared/schema';
 import { GameState, GamePhase } from './gameState';
 import { balanceRoles } from '../utils/roleBalancer';
-import { ButtonInteraction, TextChannel, EmbedBuilder } from 'discord.js';
+import { ButtonInteraction, TextChannel, EmbedBuilder, AttachmentBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { getClient } from '../bot';
 import { sendRoleAssignment } from '../components/ephemeralMessages';
+import { getStoredInteraction } from '../utils/interactionStorage';
 
 // Singleton Game Manager
 let gameManagerInstance: GameManager | null = null;
@@ -317,6 +318,59 @@ export class GameManager {
     }
     
     log(`Sent role assignments for game ${gameId}`, 'game-manager');
+    
+    // بدء مرحلة الليل تلقائيًا بعد 5 ثوانٍ
+    try {
+      // الحصول على معلومات اللعبة
+      const game = await storage.getGame(gameId);
+      if (!game || !game.channelId) {
+        throw new Error(`لم يتم العثور على معلومات اللعبة ${gameId}`);
+      }
+      
+      // تهيئة القناة
+      const client = getClient();
+      const channel = await client.channels.fetch(game.channelId) as TextChannel;
+      if (!channel) {
+        throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
+      }
+      
+      // إرسال رسالة الانتظار قبل بدء الليل
+      const waitEmbed = new EmbedBuilder()
+        .setTitle('⌛ استعدوا للعبة!')
+        .setColor('#6A0DAD')
+        .setDescription('**سيبدأ الليل الأول تلقائيًا بعد 5 ثوانٍ...**\n\nتحققوا من رسائلكم المخفية لمعرفة دوركم!');
+      
+      await channel.send({ embeds: [waitEmbed] });
+      
+      // انتظار 5 ثوانٍ ثم بدء الليل
+      setTimeout(async () => {
+        try {
+          // استيراد وظيفة بدء الليل
+          const { startNightPhase } = await import('../components/gamePhaseManager');
+          
+          // إحضار تفاعل مالك اللعبة لاستخدامه في بدء الليل
+          const ownerInteraction = getStoredInteraction(gameState.ownerId);
+          
+          if (ownerInteraction) {
+            log(`بدء الليل تلقائيًا للعبة ${gameId}`, 'game-manager');
+            
+            // التحقق من نوع التفاعل قبل المتابعة
+            if (ownerInteraction instanceof ButtonInteraction || ownerInteraction instanceof ChatInputCommandInteraction) {
+              await startNightPhase(gameId, ownerInteraction);
+            } else {
+              log(`نوع التفاعل المخزن غير متوافق للعبة ${gameId}`, 'game-manager');
+            }
+          } else {
+            log(`لا يمكن بدء الليل تلقائيًا للعبة ${gameId} - لا يوجد تفاعل مخزن لمالك اللعبة`, 'game-manager');
+          }
+        } catch (nightError) {
+          log(`خطأ في بدء الليل تلقائيًا للعبة ${gameId}: ${nightError}`, 'game-manager');
+        }
+      }, 5000);
+    } catch (error) {
+      log(`خطأ في التحضير لبدء الليل تلقائيًا للعبة ${gameId}: ${error}`, 'game-manager');
+    }
+    
     return true;
   }
   

@@ -1,7 +1,6 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { log } from '../vite';
 import { registerCommands } from './commands/game';
-import { initializeInteractionStorage } from './utils/interactionStorage';
 import { initializeGameManager } from './game/gameManager';
 
 // Create a new client instance
@@ -21,7 +20,6 @@ export const startBot = async () => {
   }
 
   // Initialize services
-  initializeInteractionStorage();
   initializeGameManager();
 
   // Register commands and handlers

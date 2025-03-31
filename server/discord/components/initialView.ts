@@ -5,12 +5,13 @@ import {
   ActionRowBuilder, 
   ButtonInteraction,
   User,
-  AttachmentBuilder
+  AttachmentBuilder,
+  GuildMember
 } from 'discord.js';
 import { storage } from '../../storage';
 import { log } from '../../vite';
 import { getGameManager } from '../game/gameManager';
-import { getStoredInteraction, storeInteraction } from '../utils/interactionStorage';
+import { getStoredInteraction, storeInteraction, storeUserForGame } from '../utils/interactionStorage';
 import { createRoleConfigEmbed } from './roleConfigView';
 import { createFeedbackModal } from './modals';
 import path from 'path';
@@ -156,16 +157,25 @@ export async function handleInitialViewButtons(interaction: ButtonInteraction) {
       return;
     }
     
-    const player = await storage.addPlayerToGame(gameId, interaction.user.id, interaction.user.username);
-    gameManager.addPlayer(gameId, interaction.user.id, interaction.user.username);
+    // استخدام الاسم الظاهر (DisplayName) بدلاً من اسم المستخدم العادي
+    const displayName = interaction.user.globalName || interaction.user.username;
+    
+    const player = await storage.addPlayerToGame(gameId, interaction.user.id, displayName);
+    gameManager.addPlayer(gameId, interaction.user.id, displayName);
+    
+    // تخزين معلومات المستخدم وقناة اللعبة
+    storeUserForGame(gameId, interaction.user.id, displayName, interaction.channelId);
     
     await updatePlayerList(gameId, interaction);
     
-    // استجابة صامتة للتفاعل بدون إظهار رسالة
-    await interaction.deferUpdate();
-    
-    // Store interaction for later use
+    // تخزين التفاعل قبل استجابة التفاعل
     storeInteraction(interaction.user.id, interaction);
+    
+    // إرسال رسالة مخفية تؤكد الانضمام
+    await interaction.reply({
+      content: `تم انضمامك إلى اللعبة ${game.id} بنجاح!`,
+      ephemeral: true
+    });
   }
   // Leave button
   else if (customId.startsWith('game_leave_')) {

@@ -11,14 +11,16 @@ import {
   StringSelectMenuOptionBuilder,
   SelectMenuComponentOptionData,
   ComponentType,
-  TextChannel
+  TextChannel,
+  Events
 } from 'discord.js';
 import { storage } from '../../storage';
 import { log } from '../../vite';
 import { getGameManager } from '../game/gameManager';
 import { GamePhase, Player, NightActionTarget, GameState } from '../game/gameState';
 import { getClient } from '../bot';
-import { storeInteraction, getStoredInteraction, sendEphemeralReply } from '../utils/interactionStorage';
+import { storeInteraction, getStoredInteraction } from '../utils/interactionStorage';
+import { sendEphemeralMessage, sendEphemeralReply } from './ephemeralMessages';
 import { getRoleDisplayName, getRoleEmoji } from './roleConfigView';
 import { RoleType } from '@shared/schema';
 import fs from 'fs';
@@ -990,6 +992,8 @@ export async function startVotingPhase(gameId: number, interaction: ButtonIntera
       **كل لاعب سيتلقى رسالة خاصة للتصويت.**
       
       *اختر بحكمة - حياة القرية تعتمد على قراراتكم!*
+      
+      **سيتم إنهاء التصويت تلقائيًا بعد 30 ثانية.**
       `);
     
     // إضافة زر إنهاء التصويت
@@ -1003,10 +1007,53 @@ export async function startVotingPhase(gameId: number, interaction: ButtonIntera
       .addComponents(endVotingButton);
     
     // إرسال رسالة التصويت
-    await (channel as TextChannel).send({
+    const votingMessage = await (channel as TextChannel).send({
       embeds: [votingEmbed],
       components: [row]
     });
+    
+    // إنشاء مؤقت لإنهاء التصويت تلقائيًا بعد 30 ثانية
+    let timeLeft = 30; // 30 ثانية
+    
+    // إنشاء رسالة المؤقت
+    const timerEmbed = new EmbedBuilder()
+      .setTitle('⏱️ الوقت المتبقي للتصويت')
+      .setColor('#FFD700')
+      .setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيتم احتساب الأصوات تلقائيًا.`);
+    
+    const timerMessage = await (channel as TextChannel).send({
+      embeds: [timerEmbed]
+    });
+    
+    // مؤقت لتحديث الوقت المتبقي
+    const timer = setInterval(async () => {
+      timeLeft--;
+      
+      // تحديث رسالة المؤقت
+      timerEmbed.setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيتم احتساب الأصوات تلقائيًا.`);
+      await timerMessage.edit({ embeds: [timerEmbed] });
+      
+      // إذا انتهى الوقت، إنهاء التصويت تلقائيًا
+      if (timeLeft <= 0) {
+        clearInterval(timer);
+        
+        // إرسال رسالة انتهاء وقت التصويت
+        await (channel as TextChannel).send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('⌛ انتهى وقت التصويت!')
+              .setColor('#FF6B00')
+              .setDescription('**انتهى وقت التصويت! سيتم احتساب النتائج الآن.**')
+          ]
+        });
+        
+        // معالجة نتائج التصويت
+        await handleVotingResults(gameId, interaction);
+      }
+    }, 1000);
+    
+    // تسجيل المؤقت في حالة اللعبة لإيقافه إذا تم إنهاء التصويت مبكرًا
+    gameState.votingTimer = timer;
     
     // إرسال خيارات التصويت لكل لاعب
     await sendVotingOptions(gameState);
@@ -1358,7 +1405,7 @@ export async function endGame(gameState: GameState, interaction: ButtonInteracti
  * تسجيل معالجات أزرار مراحل اللعبة
  */
 export function registerGamePhaseButtons(client: any) {
-  client.on('interactionCreate', async (interaction: any) => {
+  client.on(Events.InteractionCreate, async (interaction: any) => {
     // تجاهل التفاعلات غير المدعومة
     if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
     
@@ -1431,6 +1478,12 @@ export function registerGamePhaseButtons(client: any) {
       else if (customId.startsWith('end_voting_')) {
         // إنهاء التصويت ومعالجة النتائج
         await interaction.deferUpdate();
+        
+        // إيقاف مؤقت التصويت إذا كان موجودًا
+        if (gameState.votingTimer) {
+          clearInterval(gameState.votingTimer);
+        }
+        
         handleVotingResults(gameId, interaction);
       }
       else if (customId.startsWith('new_game_')) {
