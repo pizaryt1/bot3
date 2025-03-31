@@ -18,7 +18,7 @@ import { log } from '../../vite';
 import { getGameManager } from '../game/gameManager';
 import { GamePhase, Player, NightActionTarget, GameState } from '../game/gameState';
 import { getClient } from '../bot';
-import { storeInteraction, getStoredInteraction } from '../utils/interactionStorage';
+import { storeInteraction, getStoredInteraction, sendDirectMessage } from '../utils/interactionStorage';
 import { getRoleDisplayName, getRoleEmoji } from './roleConfigView';
 import { RoleType } from '@shared/schema';
 import fs from 'fs';
@@ -179,10 +179,6 @@ async function sendNightActionButtons(gameState: GameState) {
  */
 async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم
     const alivePlayers = gameState.getAlivePlayers()
       .filter((p: Player) => p.role !== 'werewolf' && p.role !== 'werewolfLeader'); // استبعاد المستذئبين الآخرين
@@ -194,12 +190,8 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
         .setColor('#880000')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [noTargetsEmbed], ephemeral: true });
-      } else {
-        await interaction.reply({ embeds: [noTargetsEmbed], ephemeral: true });
-      }
-      
+      // إرسال الرسالة باستخدام الرسائل المباشرة
+      await sendDirectMessage(player.id, null, [noTargetsEmbed]);
       return;
     }
     
@@ -212,12 +204,12 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
-        const player = alivePlayers[j];
+        const p = alivePlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`werewolf_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`werewolf_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary);
         
         currentRow.addComponents(button);
@@ -239,11 +231,34 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
       *اختر بحكمة، فحياة قبيلتك تعتمد على ذلك!*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // محاولة استخدام التفاعل المخزن أولاً
+    const interaction = getStoredInteraction(player.id);
+    if (interaction) {
+      try {
+        if (interaction.replied) {
+          await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+          return;
+        } else {
+          await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+          return;
+        }
+      } catch (interactionError) {
+        log(`خطأ في استخدام التفاعل المخزن للمستذئب ${player.username}, استخدام الرسائل المباشرة كخطة بديلة: ${interactionError}`, 'discord-game');
+      }
+    }
+    
+    // إرسال الرسالة باستخدام الرسائل المباشرة كخطة بديلة
+    const success = await sendDirectMessage(
+      player.id, 
+      null, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء المستذئب إلى ${player.username} عبر الرسائل المباشرة`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء المستذئب إلى ${player.username} عبر كلا الطريقتين`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المستذئب: ${error}`, 'discord-game');

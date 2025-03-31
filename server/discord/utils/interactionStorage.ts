@@ -82,7 +82,7 @@ export async function getDMChannel(userId: string): Promise<DMChannel | null> {
 // Send a direct message to a user using their stored DM channel
 export async function sendDirectMessage(
   userId: string, 
-  content: string | null = null, 
+  content?: string, 
   embeds: EmbedBuilder[] = [], 
   components: Array<ActionRowBuilder<ButtonBuilder | SelectMenuBuilder>> = []
 ): Promise<boolean> {

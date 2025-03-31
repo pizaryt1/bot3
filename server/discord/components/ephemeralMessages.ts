@@ -11,7 +11,7 @@ import {
   ChatInputCommandInteraction
 } from 'discord.js';
 import { RoleType } from '@shared/schema';
-import { getStoredInteraction } from '../utils/interactionStorage';
+import { getStoredInteraction, sendDirectMessage } from '../utils/interactionStorage';
 import { createRoleAssignmentEmbed } from './roleDistributionView';
 import { log } from '../../vite';
 
@@ -65,32 +65,46 @@ export async function sendRoleAssignment(
     const roleDescription = getRoleDescription(role);
     const { embed, files } = createRoleAssignmentEmbed(role, roleDescription, teammates);
     
-    // Get stored interaction for the user
+    // محاولة أولى باستخدام التفاعل المخزن
     const interaction = getStoredInteraction(userId);
     
-    if (!interaction) {
-      log(`No stored interaction found for user ${userId}`, 'discord');
+    if (interaction) {
+      try {
+        // Check if the interaction has already been replied to
+        if (interaction.replied) {
+          await interaction.followUp({ 
+            content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
+            embeds: [embed],
+            files: files,
+            ephemeral: true 
+          });
+        } else {
+          await interaction.reply({ 
+            content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
+            embeds: [embed],
+            files: files,
+            ephemeral: true 
+          });
+        }
+        return true;
+      } catch (interactionError) {
+        log(`Error using interaction for role assignment to ${userId}, falling back to DM: ${interactionError}`, 'discord');
+        // في حالة حدوث خطأ، المتابعة لاستخدام الرسائل المباشرة كخطة بديلة
+      }
+    }
+    
+    // خطة بديلة: إرسال رسالة مباشرة
+    const content = `تم تعيينك كـ ${getRoleDisplayName(role)}`;
+    const success = await sendDirectMessage(userId, content, [embed]);
+    
+    // إذا نجحت الرسالة المباشرة
+    if (success) {
+      log(`Role assignment sent to ${username} (${userId}) via DM`, 'discord-debug');
+      return true;
+    } else {
+      log(`Failed to send role assignment to ${username} (${userId}) via both methods`, 'discord');
       return false;
     }
-    
-    // Check if the interaction has already been replied to
-    if (interaction.replied) {
-      await interaction.followUp({ 
-        content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
-        embeds: [embed],
-        files: files,
-        ephemeral: true 
-      });
-    } else {
-      await interaction.reply({ 
-        content: `تم تعيينك كـ ${getRoleDisplayName(role)}`,
-        embeds: [embed],
-        files: files,
-        ephemeral: true 
-      });
-    }
-    
-    return true;
   } catch (error) {
     log(`Error sending role assignment to ${userId}: ${error}`, 'discord');
     return false;
