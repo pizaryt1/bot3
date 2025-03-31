@@ -17,6 +17,7 @@ import { handleRoleConfigViewButtons } from '../components/roleConfigView';
 import { handleInitialViewButtons } from '../components/initialView';
 import { handleModalSubmit } from '../components/modals';
 import { getGameManager } from '../game/gameManager';
+import { GameState } from '../game/gameState';
 import { registerGamePhaseButtons, startDayPhase, startNightPhase, startVotingPhase, handleVotingResults, endGame } from '../components/gamePhaseManager';
 import { getClient } from '../bot';
 import { getRoleDisplayName, getRoleEmoji } from '../components/roleConfigView';
@@ -157,6 +158,8 @@ export function registerButtonHandlers(client: Client) {
               buttonId.startsWith('end_discussion_') ||
               buttonId.startsWith('start_voting_') ||
               buttonId.startsWith('end_voting_') ||
+              buttonId.startsWith('vote_player_') || 
+              buttonId.startsWith('vote_skip_') ||
               buttonId.startsWith('new_game_')) {
         // استخراج معرّف اللعبة من معرّف الزر للتوجيه المناسب
         const parts = buttonId.split('_');
@@ -170,7 +173,9 @@ export function registerButtonHandlers(client: Client) {
             buttonId.startsWith('detective_action_') || 
             buttonId.startsWith('sniper_action_') || 
             buttonId.startsWith('reviver_action_') || 
-            buttonId.startsWith('wizard_action_')) {
+            buttonId.startsWith('wizard_action_') ||
+            buttonId.startsWith('vote_player_') ||
+            buttonId.startsWith('vote_skip_')) {
           // الصيغة هي role_action_gameID_targetID
           // تأكد من أن معرف اللعبة هو بالفعل رقم صحيح وليس معرف ديسكورد طويل
           if (parts.length >= 4) {
@@ -486,6 +491,83 @@ export function registerButtonHandlers(client: Client) {
             
             handleVotingResults(gameId, interaction);
           }
+          else if (buttonId.startsWith('vote_player_')) {
+            log(`معالجة زر تصويت: ${buttonId}`, 'discord-debug');
+            
+            // استخراج معرف اللاعب المراد التصويت له
+            const targetId = parts[parts.length - 1];
+            
+            // التحقق من أن اللاعب موجود في اللعبة وعلى قيد الحياة
+            const voter = gameState.getPlayer(interaction.user.id);
+            const target = gameState.getPlayer(targetId);
+            
+            if (!voter || !voter.isAlive) {
+              await interaction.reply({
+                content: 'لا يمكنك التصويت إلا إذا كنت على قيد الحياة في اللعبة.',
+                ephemeral: true
+              });
+              return;
+            }
+            
+            if (!target || !target.isAlive) {
+              await interaction.reply({
+                content: 'اللاعب المستهدف غير موجود أو ليس على قيد الحياة.',
+                ephemeral: true
+              });
+              return;
+            }
+            
+            // إذا كان اللاعب قد صوت سابقًا، قم بإزالة الصوت السابق
+            if (voter.voted && voter.votedFor) {
+              gameState.removeVote(interaction.user.id);
+            }
+            
+            // تسجيل التصويت الجديد
+            gameState.addVote(interaction.user.id, targetId);
+            
+            // تأكيد التصويت للمستخدم
+            await interaction.reply({
+              content: `لقد قمت بالتصويت ضد **${target.username}**!`,
+              ephemeral: true
+            });
+            
+            // تحديث رسالة التصويت العامة
+            const { updateVotingMessage } = require('./tempUpdateVoting');
+            await updateVotingMessage(gameState, interaction);
+          }
+          else if (buttonId.startsWith('vote_skip_')) {
+            log(`معالجة زر تخطي التصويت: ${buttonId}`, 'discord-debug');
+            
+            // التحقق من أن اللاعب موجود في اللعبة وعلى قيد الحياة
+            const voter = gameState.getPlayer(interaction.user.id);
+            
+            if (!voter || !voter.isAlive) {
+              await interaction.reply({
+                content: 'لا يمكنك تخطي التصويت إلا إذا كنت على قيد الحياة في اللعبة.',
+                ephemeral: true
+              });
+              return;
+            }
+            
+            // إذا كان اللاعب قد صوت سابقًا، قم بإزالة الصوت السابق
+            if (voter.voted && voter.votedFor) {
+              gameState.removeVote(interaction.user.id);
+            }
+            
+            // تعيين حالة التصويت المُتخطى
+            voter.voted = true;
+            gameState.players.set(interaction.user.id, voter);
+            
+            // تأكيد تخطي التصويت للمستخدم
+            await interaction.reply({
+              content: `لقد قمت بتخطي التصويت لهذه الجولة.`,
+              ephemeral: true
+            });
+            
+            // تحديث رسالة التصويت العامة
+            const { updateVotingMessage } = require('./tempUpdateVoting');
+            await updateVotingMessage(gameState, interaction);
+          }
           else if (buttonId.startsWith('new_game_')) {
             await interaction.followUp({
               content: 'لبدء لعبة جديدة، استخدم الأمر `/game`',
@@ -569,6 +651,8 @@ export function registerSelectMenuHandlers(client: Client) {
     }
   });
 }
+
+// استخدم دالة تحديث رسالة التصويت من الملف المنفصل
 
 // Register all commands and interaction handlers
 export function registerCommands(client: Client) {

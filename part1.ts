@@ -111,9 +111,6 @@ export async function startNightPhase(gameId: number, interaction: ButtonInterac
       embeds: [nightActionEmbed]
     });
     
-    // تأخير 10 ثوانٍ قبل إرسال رسائل الإجراءات الليلية للاعبين
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    
     // إرسال رسائل الإجراءات الليلية لكل لاعب
     await sendNightActionButtons(gameState);
     
@@ -761,681 +758,3 @@ export async function startDayPhase(gameId: number, interaction: ButtonInteracti
       throw new Error(`لم يتم العثور على معلومات اللعبة ${gameId}`);
     }
     
-    // تهيئة الرسالة
-    const client = getClient();
-    const channel = await client.channels.fetch(game.channelId);
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
-    }
-    
-    // تحضير رسالة النهار بناء على نتائج الليل
-    let dayEmbed: EmbedBuilder;
-    let dayAttachment: AttachmentBuilder;
-    
-    if (victim && !wasProtected) {
-      // حالة وجود ضحية
-      dayEmbed = new EmbedBuilder()
-        .setTitle(`☀️ بداية النهار - اليوم ${gameState.day}`)
-        .setColor('#FFD700')
-        .setDescription(`
-        # أشرقت الشمس على قتيل جديد!
-        
-        **${victim.username}** وُجِد ميتًا هذا الصباح...
-        
-        لقد كان **${getRoleDisplayName(victim.role as RoleType)}** ${getRoleEmoji(victim.role as RoleType)}
-        
-        *على القرية أن تناقش من هو المسؤول عن هذه الجريمة وما حدث في الليل.*
-        
-        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
-        
-        *نقاش مفتوح لمدة 60 ثانية...*
-        `)
-        .setImage('attachment://القتل.png');
-      
-      dayAttachment = new AttachmentBuilder(path.join('attached_assets', 'القتل.png'));
-      
-      // تحديث حالة اللاعب في قاعدة البيانات
-      await storage.updatePlayerStatus(gameId, victim.id, false);
-      
-      // تحديث حالة اللاعب في ذاكرة اللعبة
-      gameState.setPlayerAlive(victim.id, false);
-    } else if (victim && wasProtected) {
-      // حالة حماية الضحية
-      dayEmbed = new EmbedBuilder()
-        .setTitle(`☀️ بداية النهار - اليوم ${gameState.day}`)
-        .setColor('#FFD700')
-        .setDescription(`
-        # لقد نجا الجميع!
-        
-        بفضل حماية خفية، نجا **${victim.username}** من هجوم الليلة الماضية!
-        
-        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم وما حدث في الليل.*
-        
-        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
-        
-        *نقاش مفتوح لمدة 60 ثانية...*
-        `)
-        .setImage('attachment://حماية.png');
-      
-      dayAttachment = new AttachmentBuilder(path.join('attached_assets', 'حماية.png'));
-    } else {
-      // حالة عدم وجود ضحية
-      dayEmbed = new EmbedBuilder()
-        .setTitle(`☀️ بداية النهار - اليوم ${gameState.day}`)
-        .setColor('#FFD700')
-        .setDescription(`
-        # أشرقت الشمس على القرية
-        
-        لقد مرت الليلة بسلام، ولم يُقتل أحد!
-        
-        *على القرية أن تناقش من يمكن أن يكون المستذئب بينهم وما حدث في الليل.*
-        
-        **كل شخص يجب أن يتحدث عما حدث له أثناء الليل لكشف المستذئبين.**
-        
-        *نقاش مفتوح لمدة 60 ثانية...*
-        `);
-      
-      dayAttachment = new AttachmentBuilder(path.join('attached_assets', 'بداية.webp'));
-    }
-    
-    // إضافة زر إنهاء النقاش (متاح فقط لمالك اللعبة)
-    const endDiscussionButton = new ButtonBuilder()
-      .setCustomId(`end_discussion_${gameId}`)
-      .setLabel('إنهاء النقاش')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('⏭️');
-    
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(endDiscussionButton);
-    
-    // إرسال رسالة النهار
-    const dayMessage = await (channel as TextChannel).send({
-      embeds: [dayEmbed],
-      files: [dayAttachment],
-      components: [row]
-    });
-    
-    // تفقد ما إذا كانت اللعبة قد انتهت بعد موت اللاعب
-    if (gameState.isGameOver()) {
-      setTimeout(() => {
-        endGame(gameState, interaction);
-      }, 3000);
-      return;
-    }
-
-    // مؤقت الوقت المتبقي للنقاش
-    let timeLeft = 60; // 60 ثانية
-    
-    // إنشاء رسالة المؤقت
-    const timerEmbed = new EmbedBuilder()
-      .setTitle('⏱️ الوقت المتبقي للنقاش')
-      .setColor('#FFD700')
-      .setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيبدأ التصويت تلقائيًا.`);
-    
-    const timerMessage = await (channel as TextChannel).send({
-      embeds: [timerEmbed]
-    });
-    
-    // المسجات التشويقية للنقاش
-    const suspenseMessages = [
-      '👁️ **عيون المستذئبين تراقب الجميع... من تشك فيه؟**',
-      '🤔 **ألم تلاحظوا سلوك أحدهم المريب أثناء الليل؟**',
-      '💬 **هل يقول الجميع الحقيقة؟ انتبهوا للتناقضات...**',
-      '🔍 **الحقيقة تختبئ في التفاصيل الصغيرة... استمعوا جيدًا!**',
-      '⚠️ **لا تدعوا المستذئبين يخدعونكم. فكروا في كل احتمال!**',
-      '🗯️ **من الصامت بينكم؟ ربما يخفي شيئًا مهمًا...**',
-      '🌙 **ماذا رأيتم في الليل؟ كل معلومة قد تكون مفتاح النجاة!**'
-    ];
-    
-    // خلط الرسائل التشويقية
-    suspenseMessages.sort(() => Math.random() - 0.5);
-    
-    // مؤقت لتحديث الوقت المتبقي ونشر رسائل التشويق
-    const timer = setInterval(async () => {
-      timeLeft--;
-      
-      // تحديث رسالة المؤقت
-      timerEmbed.setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيبدأ التصويت تلقائيًا.`);
-      await timerMessage.edit({ embeds: [timerEmbed] });
-      
-      // نشر رسائل تشويقية كل 8 ثواني
-      if (timeLeft % 8 === 0 && timeLeft > 0) {
-        const suspenseIndex = Math.floor((60 - timeLeft) / 8) % suspenseMessages.length;
-        
-        // تحقق من اللاعبين الذين لم يتحدثوا بعد
-        const alivePlayers = gameState.getAlivePlayers();
-        let quiet = false;
-        let quietPlayer = null;
-        
-        // هنا يمكن إضافة منطق لتحديد اللاعبين الصامتين بشكل عشوائي
-        if (alivePlayers.length > 0 && Math.random() > 0.7) {
-          quietPlayer = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
-          quiet = true;
-        }
-        
-        const suspenseEmbed = new EmbedBuilder()
-          .setColor('#FFB900')
-          .setTitle('💭 أفكار القرية');
-        
-        if (quiet && quietPlayer) {
-          suspenseEmbed.setDescription(`${suspenseMessages[suspenseIndex]}\n\n👀 **<@${quietPlayer.id}> لم يتحدث كثيرًا... ربما يخفي شيئًا؟**`);
-        } else {
-          suspenseEmbed.setDescription(suspenseMessages[suspenseIndex]);
-        }
-        
-        await (channel as TextChannel).send({ embeds: [suspenseEmbed] });
-      }
-      
-      // إذا انتهى الوقت، بدء التصويت تلقائيًا
-      if (timeLeft <= 0) {
-        clearInterval(timer);
-        await (channel as TextChannel).send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('⌛ انتهى وقت النقاش!')
-              .setColor('#FF6B00')
-              .setDescription('**حان وقت التصويت! أدلوا بأصواتكم للتخلص من أحد المشتبه فيهم.**')
-          ]
-        });
-        
-        // تأخير 10 ثوانٍ قبل بدء مرحلة التصويت
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        
-        // بدء مرحلة التصويت
-        await startVotingPhase(gameId, interaction);
-      }
-    }, 1000);
-    
-    // تسجيل المؤقت في حالة اللعبة لإيقافه إذا تم إنهاء النقاش مبكرًا
-    gameState.discussionTimer = timer;
-    
-    return true;
-  } catch (error) {
-    log(`خطأ في بدء مرحلة النهار: ${error}`, 'discord-game');
-    return false;
-  }
-}
-
-/**
- * بدء مرحلة التصويت
- */
-export async function startVotingPhase(gameId: number, interaction: ButtonInteraction | ChatInputCommandInteraction) {
-  try {
-    // الحصول على حالة اللعبة
-    const gameManager = getGameManager();
-    const gameState = gameManager.getGameState(gameId);
-    
-    if (!gameState) {
-      throw new Error(`لم يتم العثور على لعبة برقم ${gameId}`);
-    }
-    
-    // تحديث حالة اللعبة
-    gameState.setPhase(GamePhase.VOTING);
-    gameState.resetVotes();
-    
-    // الحصول على معلومات اللعبة من قاعدة البيانات
-    const game = await storage.getGame(gameId);
-    if (!game || !game.channelId) {
-      throw new Error(`لم يتم العثور على معلومات اللعبة ${gameId}`);
-    }
-    
-    // تهيئة الرسالة
-    const client = getClient();
-    const channel = await client.channels.fetch(game.channelId);
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
-    }
-    
-    // إنشاء رسالة التصويت
-    const votingEmbed = new EmbedBuilder()
-      .setTitle(`🗳️ مرحلة التصويت - اليوم ${gameState.day}`)
-      .setColor('#1E90FF')
-      .setDescription(`
-      # حان وقت التصويت!
-      
-      قررت القرية التصويت للتخلص من أحد السكان المشتبه بهم.
-      
-      **كل لاعب سيتلقى رسالة خاصة للتصويت.**
-      
-      *اختر بحكمة - حياة القرية تعتمد على قراراتكم!*
-      
-      **سيتم إنهاء التصويت تلقائيًا بعد 30 ثانية.**
-      `);
-    
-    // إضافة زر إنهاء التصويت
-    const endVotingButton = new ButtonBuilder()
-      .setCustomId(`end_voting_${gameId}`)
-      .setLabel('إنهاء التصويت')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('✅');
-    
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(endVotingButton);
-    
-    // إرسال رسالة التصويت
-    const votingMessage = await (channel as TextChannel).send({
-      embeds: [votingEmbed],
-      components: [row]
-    });
-    
-    // إنشاء مؤقت لإنهاء التصويت تلقائيًا بعد 30 ثانية
-    let timeLeft = 30; // 30 ثانية
-    
-    // إنشاء رسالة المؤقت
-    const timerEmbed = new EmbedBuilder()
-      .setTitle('⏱️ الوقت المتبقي للتصويت')
-      .setColor('#FFD700')
-      .setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيتم احتساب الأصوات تلقائيًا.`);
-    
-    const timerMessage = await (channel as TextChannel).send({
-      embeds: [timerEmbed]
-    });
-    
-    // مؤقت لتحديث الوقت المتبقي
-    const timer = setInterval(async () => {
-      timeLeft--;
-      
-      // تحديث رسالة المؤقت
-      timerEmbed.setDescription(`**${timeLeft} ثانية**\n\nبعد انتهاء الوقت، سيتم احتساب الأصوات تلقائيًا.`);
-      await timerMessage.edit({ embeds: [timerEmbed] });
-      
-      // إذا انتهى الوقت، إنهاء التصويت تلقائيًا
-      if (timeLeft <= 0) {
-        clearInterval(timer);
-        
-        // إرسال رسالة انتهاء وقت التصويت
-        await (channel as TextChannel).send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('⌛ انتهى وقت التصويت!')
-              .setColor('#FF6B00')
-              .setDescription('**انتهى وقت التصويت! سيتم احتساب النتائج الآن.**')
-          ]
-        });
-        
-        // معالجة نتائج التصويت
-        await handleVotingResults(gameId, interaction);
-      }
-    }, 1000);
-    
-    // تسجيل المؤقت في حالة اللعبة لإيقافه إذا تم إنهاء التصويت مبكرًا
-    gameState.votingTimer = timer;
-    
-    // إرسال خيارات التصويت لكل لاعب
-    await sendVotingOptions(gameState);
-    
-    return true;
-  } catch (error) {
-    log(`خطأ في بدء مرحلة التصويت: ${error}`, 'discord-game');
-    return false;
-  }
-}
-
-/**
- * إرسال خيارات التصويت كرسالة عامة مع إظهار عدد الأصوات
- */
-async function sendVotingOptions(gameState: GameState) {
-  try {
-    // الحصول على معلومات اللعبة من قاعدة البيانات
-    const game = await storage.getGame(gameState.id);
-    if (!game || !game.channelId) {
-      throw new Error(`لم يتم العثور على معلومات اللعبة ${gameState.id}`);
-    }
-    
-    // تهيئة القناة
-    const client = getClient();
-    const channel = await client.channels.fetch(game.channelId);
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
-    }
-    
-    const alivePlayers = gameState.getAlivePlayers();
-    
-    if (alivePlayers.length <= 1) {
-      const noCandidatesEmbed = new EmbedBuilder()
-        .setTitle('🗳️ التصويت')
-        .setColor('#1E90FF')
-        .setDescription('لا يوجد مرشحين كافيين للتصويت.');
-      
-      await (channel as TextChannel).send({ embeds: [noCandidatesEmbed] });
-      return;
-    }
-    
-    // تهيئة بيانات التصويت في حالة اللعبة
-    gameState.resetVotes();
-    
-    // إنشاء أزرار تصويت لكل لاعب
-    const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
-    
-    // إنشاء رسالة التصويت مع مربعات تعرض الأسماء وعدد الأصوات
-    let voteDescription = `## حان وقت التصويت!\n\nاختر لاعباً تشك في أنه مستذئب للتصويت ضده.\nالتصويت متاح لمدة 30 ثانية.\n\n`;
-    
-    // إضافة مربعات للاعبين مع عداد الأصوات
-    voteDescription += `**المرشحون للتصويت:**\n\n`;
-    
-    // إنشاء صف للأزرار (4 أزرار في كل صف كحد أقصى)
-    let currentRow = new ActionRowBuilder<ButtonBuilder>();
-    
-    // إضافة أزرار لجميع اللاعبين
-    for (let i = 0; i < alivePlayers.length; i++) {
-      const player = alivePlayers[i];
-      
-      // إضافة مربع معلومات للاعب في الوصف
-      voteDescription += `🔹 **${player.username}** - الأصوات: 0️⃣\n`;
-      
-      // إنشاء زر للاعب
-      const button = new ButtonBuilder()
-        .setCustomId(`vote_player_${gameState.id}_${player.id}`)
-        .setLabel(`${player.username}`)
-        .setStyle(ButtonStyle.Secondary);
-      
-      currentRow.addComponents(button);
-      
-      // إذا وصلنا إلى 4 أزرار أو نهاية القائمة، نضيف الصف الحالي ونبدأ صفًا جديدًا
-      if (currentRow.components.length === 4 || i === alivePlayers.length - 1) {
-        buttonRows.push(currentRow);
-        currentRow = new ActionRowBuilder<ButtonBuilder>();
-      }
-    }
-    
-    // إضافة زر تخطي التصويت
-    const skipButton = new ButtonBuilder()
-      .setCustomId(`vote_skip_${gameState.id}`)
-      .setLabel(`تخطي التصويت`)
-      .setStyle(ButtonStyle.Danger);
-    
-    // إضافة زر التخطي إلى صف منفصل
-    const skipRow = new ActionRowBuilder<ButtonBuilder>().addComponents(skipButton);
-    buttonRows.push(skipRow);
-    
-    // إنشاء رسالة التصويت
-    const voteEmbed = new EmbedBuilder()
-      .setTitle('🗳️ التصويت العام')
-      .setColor('#1E90FF')
-      .setDescription(voteDescription);
-    
-    // إرسال رسالة التصويت العامة
-    const voteMessage = await (channel as TextChannel).send({
-      embeds: [voteEmbed],
-      components: buttonRows
-    });
-    
-    // تخزين معرف رسالة التصويت لتحديثها لاحقاً
-    gameState.votingMessageId = voteMessage.id;
-    
-    log(`تم إرسال رسالة التصويت العامة`, 'discord-debug');
-  } catch (error) {
-    log(`خطأ في إرسال خيارات التصويت: ${error}`, 'discord-error');
-  }
-}
-
-/**
- * معالجة نتائج التصويت وطرد اللاعب
- */
-export async function handleVotingResults(gameId: number, interaction: ButtonInteraction | ChatInputCommandInteraction) {
-  try {
-    // الحصول على حالة اللعبة
-    const gameManager = getGameManager();
-    const gameState = gameManager.getGameState(gameId);
-    
-    if (!gameState) {
-      throw new Error(`لم يتم العثور على لعبة برقم ${gameId}`);
-    }
-    
-    // الحصول على اللاعب الذي حصل على أكثر الأصوات
-    const mostVotedPlayer = gameState.getMostVotedPlayer();
-    
-    // الحصول على معلومات اللعبة من قاعدة البيانات
-    const game = await storage.getGame(gameId);
-    if (!game || !game.channelId) {
-      throw new Error(`لم يتم العثور على معلومات اللعبة ${gameId}`);
-    }
-    
-    // تهيئة القناة
-    const client = getClient();
-    const channel = await client.channels.fetch(game.channelId);
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
-    }
-    
-    // تحضير رسالة نتائج التصويت
-    let votingResultsEmbed: EmbedBuilder;
-    let votingAttachment: AttachmentBuilder | undefined;
-    
-    if (!mostVotedPlayer) {
-      // حالة عدم وجود أصوات أو تعادل
-      votingResultsEmbed = new EmbedBuilder()
-        .setTitle(`📊 نتائج التصويت - اليوم ${gameState.day}`)
-        .setColor('#1E90FF')
-        .setDescription(`
-        # لم يتم طرد أي لاعب!
-        
-        لم يتم التوصل إلى اتفاق على من يجب طرده، أو لم يتم الإدلاء بأي صوت.
-        
-        *القرية في خطر... المستذئبون يتربصون!*
-        `);
-    } else {
-      // حالة وجود نتيجة للتصويت
-      const isWerewolf = mostVotedPlayer.role === 'werewolf' || mostVotedPlayer.role === 'werewolfLeader';
-      
-      // تحديث حالة اللاعب الذي تم طرده
-      await storage.updatePlayerStatus(gameId, mostVotedPlayer.id, false);
-      gameState.setPlayerAlive(mostVotedPlayer.id, false);
-      
-      // إرسال رسالة الطرد للاعب
-      await sendEliminationMessage(mostVotedPlayer);
-      
-      // تحضير رسالة النتائج
-      votingResultsEmbed = new EmbedBuilder()
-        .setTitle(`📊 نتائج التصويت - اليوم ${gameState.day}`)
-        .setColor('#1E90FF')
-        .setDescription(`
-        # تم طرد ${mostVotedPlayer.username}!
-        
-        القرية قررت طرد **${mostVotedPlayer.username}** بعد التصويت.
-        
-        تبين أنه كان **${getRoleDisplayName(mostVotedPlayer.role as RoleType)}** ${getRoleEmoji(mostVotedPlayer.role as RoleType)}
-        
-        *${isWerewolf ? 'أحسنتم! لقد تخلصتم من أحد المستذئبين.' : 'للأسف، لقد طردتم أحد القرويين الأبرياء.'}*
-        `);
-      
-      // اختيار الصورة المناسبة
-      const imagePath = isWerewolf ? 'طرد مستذئب.png' : 'طرد قروي.png';
-      votingAttachment = new AttachmentBuilder(path.join('attached_assets', imagePath));
-      votingResultsEmbed.setImage(`attachment://${imagePath}`);
-    }
-    
-    // إضافة زر بدء الليلة التالية
-    const nextPhaseButton = new ButtonBuilder()
-      .setCustomId(`start_night_${gameId}`)
-      .setLabel('بدء الليلة التالية')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🌙');
-    
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(nextPhaseButton);
-    
-    // إرسال رسالة النتائج
-    if (!mostVotedPlayer) {
-      // إذا لم يكن هناك لاعب تم التصويت عليه (تعادل أو عدم وجود أصوات)
-      await (channel as TextChannel).send({
-        embeds: [votingResultsEmbed],
-        components: [row]
-      });
-    } else {
-      // إذا كان هناك لاعب تم التصويت عليه مع الصورة
-      await (channel as TextChannel).send({
-        embeds: [votingResultsEmbed],
-        files: votingAttachment ? [votingAttachment] : undefined,
-        components: [row]
-      });
-    }
-    
-    // تفقد ما إذا كانت اللعبة قد انتهت بعد طرد اللاعب
-    if (gameState.isGameOver()) {
-      setTimeout(() => {
-        endGame(gameState, interaction);
-      }, 3000);
-      return;
-    }
-    
-    // تحضير اللعبة للمرحلة التالية
-    gameState.prepareNextPhase();
-    
-    return true;
-  } catch (error) {
-    log(`خطأ في معالجة نتائج التصويت: ${error}`, 'discord-game');
-    return false;
-  }
-}
-
-/**
- * إرسال رسالة للاعب الذي تم طرده
- */
-export async function sendEliminationMessage(player: Player) {
-  try {
-    // إنشاء رسالة الإقصاء
-    const eliminationEmbed = new EmbedBuilder()
-      .setTitle('⚰️ لقد تم طردك من القرية')
-      .setColor('#FF0000')
-      .setDescription(`
-      # تم طردك!
-      
-      بعد تصويت القرية، تم طردك من اللعبة.
-      
-      **كنت تلعب دور: ${getRoleDisplayName(player.role as RoleType)} ${getRoleEmoji(player.role as RoleType)}**
-      
-      *لا تكشف عن دورك للاعبين الآخرين! يمكنك الاستمرار في مشاهدة اللعبة، لكن لا يمكنك المشاركة بعد الآن.*
-      `);
-    
-    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
-    const success = await sendEphemeralReply(player.id, undefined, [eliminationEmbed]);
-    
-    if (success) {
-      log(`تم إرسال رسالة الطرد إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
-    } else {
-      log(`فشل في إرسال رسالة الطرد إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
-    }
-  } catch (error) {
-    log(`خطأ في إرسال رسالة الطرد للاعب ${player.username}: ${error}`, 'discord-game');
-  }
-}
-
-/**
- * نهاية اللعبة
- */
-export async function endGame(gameState: GameState, interaction: ButtonInteraction | ChatInputCommandInteraction) {
-  try {
-    // تحديث حالة اللعبة
-    gameState.setPhase(GamePhase.ENDED);
-    
-    // الحصول على الفريق الفائز
-    const winner = gameState.getWinner();
-    
-    // الحصول على معلومات اللعبة من قاعدة البيانات
-    const game = await storage.getGame(gameState.id);
-    if (!game || !game.channelId) {
-      throw new Error(`لم يتم العثور على معلومات اللعبة ${gameState.id}`);
-    }
-    
-    // تهيئة القناة
-    const client = getClient();
-    const channel = await client.channels.fetch(game.channelId);
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`لم يتم العثور على القناة ${game.channelId}`);
-    }
-    
-    // تحديث حالة اللعبة في قاعدة البيانات
-    await storage.updateGameStatus(gameState.id, 'ended');
-    
-    // إعادة تعيين حالة اللعبة في مدير اللعبة
-    const gameManager = getGameManager();
-    await gameManager.resetGame(gameState.id);
-    
-    if (!winner) {
-      // حالة غير متوقعة - لا يوجد فائز
-      const errorEmbed = new EmbedBuilder()
-        .setTitle('⚠️ نهاية اللعبة')
-        .setColor('#FF0000')
-        .setDescription('حدث خطأ غير متوقع عند تحديد الفائز.');
-      
-      await (channel as TextChannel).send({ embeds: [errorEmbed] });
-      return;
-    }
-    
-    // إنشاء رسالة نهاية اللعبة
-    const endGameEmbed = new EmbedBuilder()
-      .setTitle('🏆 نهاية اللعبة')
-      .setColor(winner === 'villagers' ? '#00FF00' : '#FF0000');
-    
-    let winnerMessage: string;
-    let winImage: string;
-    
-    if (winner === 'villagers') {
-      winnerMessage = `
-      # انتصر القرويون! 🎉
-      
-      تمكن القرويون من اكتشاف وطرد جميع المستذئبين.
-      القرية آمنة مرة أخرى بفضل يقظة وذكاء أهلها!
-      
-      **مبروك للقرويين!**
-      `;
-      winImage = 'فوز القرويون.png';
-    } else {
-      winnerMessage = `
-      # انتصر المستذئبون! 🐺
-      
-      نجح المستذئبون في القضاء على عدد كافٍ من القرويين.
-      المستذئبون يسيطرون الآن على القرية!
-      
-      **مبروك للمستذئبين!**
-      `;
-      winImage = 'فوز المستذئبين.png';
-    }
-    
-    endGameEmbed.setDescription(winnerMessage);
-    endGameEmbed.setImage(`attachment://${winImage}`);
-    
-    // إضافة بيانات أدوار اللاعبين
-    const playerRoles = Array.from(gameState.players.values())
-      .map(p => `${p.username}: ${getRoleEmoji(p.role as RoleType)} ${getRoleDisplayName(p.role as RoleType)} ${p.isAlive ? '(حي)' : '(ميت)'}`);
-    
-    endGameEmbed.addFields({ name: 'أدوار اللاعبين', value: playerRoles.join('\n') });
-    
-    // إضافة زر لعبة جديدة
-    const newGameButton = new ButtonBuilder()
-      .setCustomId(`new_game_${gameState.id}`)
-      .setLabel('بدء لعبة جديدة')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('🎮');
-    
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(newGameButton);
-    
-    // إنشاء مرفق الصورة
-    const winAttachment = new AttachmentBuilder(path.join('attached_assets', winImage));
-    
-    // إرسال رسالة نهاية اللعبة
-    await (channel as TextChannel).send({
-      embeds: [endGameEmbed],
-      files: [winAttachment],
-      components: [row]
-    });
-    
-    return true;
-  } catch (error) {
-    log(`خطأ في إنهاء اللعبة: ${error}`, 'discord-game');
-    return false;
-  }
-}
-
-/**
- * تسجيل معالجات أزرار مراحل اللعبة
- */
-export function registerGamePhaseButtons(client: any) {
-  // نقوم بتعريف دالة يتم استدعاؤها من المكان المناسب بدلاً من تسجيل مستمع جديد
-  log(`تم تسجيل معالجات أزرار مراحل اللعبة`, 'discord-debug');
-  
-  // لن نقوم بتسجيل مستمع جديد هنا لتجنب التداخل مع المستمع الرئيسي في ملف game.ts
-  // تم نقل المنطق إلى هناك
-}

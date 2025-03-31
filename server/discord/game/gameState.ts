@@ -56,6 +56,8 @@ export class GameState {
   public discussionTimer?: NodeJS.Timeout;
   // مؤقت مرحلة التصويت
   public votingTimer?: NodeJS.Timeout;
+  // لتخزين معرف رسالة التصويت لتحديثها عند التصويت
+  public votingMessageId?: string;
   
   constructor(id: number, ownerId: string) {
     this.id = id;
