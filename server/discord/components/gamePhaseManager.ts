@@ -18,7 +18,7 @@ import { log } from '../../vite';
 import { getGameManager } from '../game/gameManager';
 import { GamePhase, Player, NightActionTarget, GameState } from '../game/gameState';
 import { getClient } from '../bot';
-import { storeInteraction, getStoredInteraction, sendDirectMessage } from '../utils/interactionStorage';
+import { storeInteraction, getStoredInteraction, sendEphemeralReply } from '../utils/interactionStorage';
 import { getRoleDisplayName, getRoleEmoji } from './roleConfigView';
 import { RoleType } from '@shared/schema';
 import fs from 'fs';
@@ -190,8 +190,8 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
         .setColor('#880000')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      // إرسال الرسالة باستخدام الرسائل المباشرة
-      await sendDirectMessage(player.id, null, [noTargetsEmbed]);
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      await sendEphemeralReply(player.id, undefined, [noTargetsEmbed]);
       return;
     }
     
@@ -231,34 +231,18 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
       *اختر بحكمة، فحياة قبيلتك تعتمد على ذلك!*
       `);
     
-    // محاولة استخدام التفاعل المخزن أولاً
-    const interaction = getStoredInteraction(player.id);
-    if (interaction) {
-      try {
-        if (interaction.replied) {
-          await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
-          return;
-        } else {
-          await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
-          return;
-        }
-      } catch (interactionError) {
-        log(`خطأ في استخدام التفاعل المخزن للمستذئب ${player.username}, استخدام الرسائل المباشرة كخطة بديلة: ${interactionError}`, 'discord-game');
-      }
-    }
-    
-    // إرسال الرسالة باستخدام الرسائل المباشرة كخطة بديلة
-    const success = await sendDirectMessage(
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
       player.id, 
-      null, 
+      undefined, 
       [actionEmbed], 
       buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
     );
     
     if (success) {
-      log(`تم إرسال رسالة إجراء المستذئب إلى ${player.username} عبر الرسائل المباشرة`, 'discord-debug');
+      log(`تم إرسال رسالة إجراء المستذئب إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      log(`فشل في إرسال رسالة إجراء المستذئب إلى ${player.username} عبر كلا الطريقتين`, 'discord-game');
+      log(`فشل في إرسال رسالة إجراء المستذئب إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المستذئب: ${error}`, 'discord-game');
@@ -270,10 +254,6 @@ async function sendWerewolfActionMessage(gameState: GameState, player: Player) {
  */
 async function sendSeerActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم (باستثناء نفسه)
     const alivePlayers = gameState.getAlivePlayers()
       .filter(p => p.id !== player.id);
@@ -284,12 +264,8 @@ async function sendSeerActionMessage(gameState: GameState, player: Player) {
         .setColor('#4B0082')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [noTargetsEmbed], ephemeral: true });
-      } else {
-        await interaction.reply({ embeds: [noTargetsEmbed], ephemeral: true });
-      }
-      
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      await sendEphemeralReply(player.id, undefined, [noTargetsEmbed]);
       return;
     }
     
@@ -302,12 +278,12 @@ async function sendSeerActionMessage(gameState: GameState, player: Player) {
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
-        const player = alivePlayers[j];
+        const p = alivePlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`seer_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`seer_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('👁️');
         
@@ -330,11 +306,18 @@ async function sendSeerActionMessage(gameState: GameState, player: Player) {
       *استخدم قدرتك بحكمة للمساعدة في كشف المستذئبين!*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء العراف إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء العراف إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء العراف: ${error}`, 'discord-game');
@@ -346,10 +329,6 @@ async function sendSeerActionMessage(gameState: GameState, player: Player) {
  */
 async function sendGuardianActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم
     const alivePlayers = gameState.getAlivePlayers();
     
@@ -359,12 +338,8 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
         .setColor('#00688B')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [noTargetsEmbed], ephemeral: true });
-      } else {
-        await interaction.reply({ embeds: [noTargetsEmbed], ephemeral: true });
-      }
-      
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      await sendEphemeralReply(player.id, undefined, [noTargetsEmbed]);
       return;
     }
     
@@ -377,12 +352,12 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
-        const player = alivePlayers[j];
+        const p = alivePlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`guardian_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`guardian_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('🛡️');
         
@@ -405,11 +380,18 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
       *لا يمكنك حماية نفس الشخص ليلتين متتاليتين.*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء الحارس إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء الحارس إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء الحارس: ${error}`, 'discord-game');
@@ -421,10 +403,6 @@ async function sendGuardianActionMessage(gameState: GameState, player: Player) {
  */
 async function sendDetectiveActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم (باستثناء نفسه)
     const alivePlayers = gameState.getAlivePlayers()
       .filter(p => p.id !== player.id);
@@ -435,12 +413,8 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
         .setColor('#008080')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [noTargetsEmbed], ephemeral: true });
-      } else {
-        await interaction.reply({ embeds: [noTargetsEmbed], ephemeral: true });
-      }
-      
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      await sendEphemeralReply(player.id, undefined, [noTargetsEmbed]);
       return;
     }
     
@@ -453,12 +427,12 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
-        const player = alivePlayers[j];
+        const p = alivePlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`detective_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`detective_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('🔍');
         
@@ -481,11 +455,18 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
       *استخدم هذه المعلومات بحكمة، فقد تكون حاسمة لإنقاذ القرية.*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء المحقق إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء المحقق إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المحقق: ${error}`, 'discord-game');
@@ -497,10 +478,6 @@ async function sendDetectiveActionMessage(gameState: GameState, player: Player) 
  */
 async function sendSniperActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم (باستثناء نفسه)
     const alivePlayers = gameState.getAlivePlayers()
       .filter(p => p.id !== player.id);
@@ -511,12 +488,8 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
         .setColor('#8B4513')
         .setDescription('لا يوجد لاعبين أحياء يمكنك اختيارهم.');
       
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [noTargetsEmbed], ephemeral: true });
-      } else {
-        await interaction.reply({ embeds: [noTargetsEmbed], ephemeral: true });
-      }
-      
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      await sendEphemeralReply(player.id, undefined, [noTargetsEmbed]);
       return;
     }
     
@@ -529,12 +502,12 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, alivePlayers.length); j++) {
-        const player = alivePlayers[j];
+        const p = alivePlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`sniper_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`sniper_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('🎯');
         
@@ -569,11 +542,18 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
       *تذكر: لديك طلقتان فقط طوال اللعبة، فاستخدمهما بحكمة.*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء القناص إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء القناص إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء القناص: ${error}`, 'discord-game');
@@ -585,10 +565,6 @@ async function sendSniperActionMessage(gameState: GameState, player: Player) {
  */
 async function sendVillagerNightMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // إنشاء رسالة الانتظار للقروي
     const villagerEmbed = new EmbedBuilder()
       .setTitle('🛌 وقت النوم للقرويين')
@@ -604,11 +580,13 @@ async function sendVillagerNightMessage(gameState: GameState, player: Player) {
       *تذكر: في النقاش النهاري، يجب عليك المشاركة في النقاش والتصويت ضد المستذئبين المشتبه بهم!*
       `);
     
-    // إرسال الرسالة للقروي
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [villagerEmbed], ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(player.id, undefined, [villagerEmbed]);
+    
+    if (success) {
+      log(`تم إرسال رسالة انتظار القروي إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [villagerEmbed], ephemeral: true });
+      log(`فشل في إرسال رسالة انتظار القروي إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة الانتظار للقروي: ${error}`, 'discord-game');
@@ -620,10 +598,6 @@ async function sendVillagerNightMessage(gameState: GameState, player: Player) {
  */
 async function sendReviverActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الميتين للاختيار بينهم
     const deadPlayers = Array.from(gameState.players.values())
       .filter(p => !p.isAlive);
@@ -637,12 +611,12 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
       
       // إضافة أزرار للاعبين في هذا الصف
       for (let j = i; j < Math.min(i + 3, deadPlayers.length); j++) {
-        const player = deadPlayers[j];
+        const p = deadPlayers[j];
         
         // إنشاء زر لكل لاعب
         const button = new ButtonBuilder()
-          .setCustomId(`reviver_action_${gameState.id}_${player.id}`)
-          .setLabel(`${j} ${player.username}`)
+          .setCustomId(`reviver_action_${gameState.id}_${p.id}`)
+          .setLabel(`${j+1} ${p.username}`)
           .setStyle(ButtonStyle.Secondary)
           .setEmoji('💓');
         
@@ -664,8 +638,6 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
     
     buttonRows.push(skipRow);
     
-
-    
     // إنشاء رسالة الإجراء
     const actionEmbed = new EmbedBuilder()
       .setTitle('💓 قوة الإحياء')
@@ -679,11 +651,18 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
       *اختر بحكمة من تريد إحياءه، أو احتفظ بقدرتك لوقت لاحق.*
       `);
     
-    // إرسال الرسالة مع أزرار الاختيار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء المنعش إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: buttonRows, ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء المنعش إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء المنعش: ${error}`, 'discord-game');
@@ -695,10 +674,6 @@ async function sendReviverActionMessage(gameState: GameState, player: Player) {
  */
 async function sendWizardActionMessage(gameState: GameState, player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // الحصول على قائمة اللاعبين الأحياء للاختيار بينهم
     const alivePlayers = gameState.getAlivePlayers()
       .filter(p => p.id !== player.id);
@@ -741,11 +716,18 @@ async function sendWizardActionMessage(gameState: GameState, player: Player) {
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(protectionButton, poisonButton, skipButton);
     
-    // إرسال الرسالة مع الأزرار
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [actionEmbed], components: [row], ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(
+      player.id, 
+      undefined, 
+      [actionEmbed], 
+      [row] as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+    );
+    
+    if (success) {
+      log(`تم إرسال رسالة إجراء الساحر إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [actionEmbed], components: [row], ephemeral: true });
+      log(`فشل في إرسال رسالة إجراء الساحر إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة إجراء الساحر: ${error}`, 'discord-game');
@@ -1044,13 +1026,6 @@ async function sendVotingOptions(gameState: GameState) {
   
   for (const voter of alivePlayers) {
     try {
-      // الحصول على التفاعل المخزن للاعب
-      const interaction = getStoredInteraction(voter.id);
-      if (!interaction) {
-        log(`لم يتم العثور على تفاعل محفوظ للاعب ${voter.username} (${voter.id})`, 'discord-game');
-        continue;
-      }
-      
       // الحصول على قائمة اللاعبين الأحياء الآخرين للتصويت عليهم
       const voteCandidates = alivePlayers.filter(p => p.id !== voter.id);
       
@@ -1060,29 +1035,25 @@ async function sendVotingOptions(gameState: GameState) {
           .setColor('#1E90FF')
           .setDescription('لا يوجد مرشحين للتصويت.');
         
-        if (interaction.replied) {
-          await interaction.followUp({ embeds: [noCandidatesEmbed], ephemeral: true });
-        } else {
-          await interaction.reply({ embeds: [noCandidatesEmbed], ephemeral: true });
-        }
-        
+        // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+        await sendEphemeralReply(voter.id, undefined, [noCandidatesEmbed]);
         continue;
       }
       
       // إنشاء أزرار تصويت لكل لاعب
       const buttonRows: ActionRowBuilder<ButtonBuilder>[] = [];
       
-      // إنشاء مجموعات من الأزرار (5 أزرار كحد أقصى في كل صف)
+      // إنشاء مجموعات من الأزرار (3 أزرار كحد أقصى في كل صف)
       for (let i = 0; i < voteCandidates.length; i += 3) {
         const currentRow = new ActionRowBuilder<ButtonBuilder>();
         
         // إضافة أزرار للاعبين في هذا الصف (كحد أقصى 3 لاعبين في صف واحد)
         for (let j = i; j < Math.min(i + 3, voteCandidates.length); j++) {
-          const player = voteCandidates[j];
+          const p = voteCandidates[j];
           // إنشاء زر لكل لاعب
           const button = new ButtonBuilder()
-            .setCustomId(`vote_player_${gameState.id}_${player.id}`)
-            .setLabel(`${j} ${player.username}`)
+            .setCustomId(`vote_player_${gameState.id}_${p.id}`)
+            .setLabel(`${j+1} ${p.username}`)
             .setStyle(ButtonStyle.Secondary);
           
           currentRow.addComponents(button);
@@ -1104,11 +1075,18 @@ async function sendVotingOptions(gameState: GameState) {
         *تذكر أن تصويتك قد يحدد مصير القرية!*
         `);
       
-      // إرسال رسالة التصويت
-      if (interaction.replied) {
-        await interaction.followUp({ embeds: [voteEmbed], components: buttonRows, ephemeral: true });
+      // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+      const success = await sendEphemeralReply(
+        voter.id, 
+        undefined, 
+        [voteEmbed], 
+        buttonRows as Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>>
+      );
+      
+      if (success) {
+        log(`تم إرسال خيارات التصويت إلى ${voter.username} عبر الرسائل المخفية`, 'discord-debug');
       } else {
-        await interaction.reply({ embeds: [voteEmbed], components: buttonRows, ephemeral: true });
+        log(`فشل في إرسال خيارات التصويت إلى ${voter.username} - لا يوجد تفاعل مخزن`, 'discord-game');
       }
     } catch (error) {
       log(`خطأ في إرسال خيارات التصويت للاعب ${voter.username}: ${error}`, 'discord-game');
@@ -1241,10 +1219,6 @@ export async function handleVotingResults(gameId: number, interaction: ButtonInt
  */
 async function sendEliminationMessage(player: Player) {
   try {
-    // الحصول على التفاعل المخزن للاعب
-    const interaction = getStoredInteraction(player.id);
-    if (!interaction) return;
-    
     // إنشاء رسالة الإقصاء
     const eliminationEmbed = new EmbedBuilder()
       .setTitle('⚰️ لقد تم طردك من القرية')
@@ -1259,11 +1233,13 @@ async function sendEliminationMessage(player: Player) {
       *لا تكشف عن دورك للاعبين الآخرين! يمكنك الاستمرار في مشاهدة اللعبة، لكن لا يمكنك المشاركة بعد الآن.*
       `);
     
-    // إرسال الرسالة للاعب
-    if (interaction.replied) {
-      await interaction.followUp({ embeds: [eliminationEmbed], ephemeral: true });
+    // إرسال الرسالة باستخدام الرسائل المخفية في الشات العام
+    const success = await sendEphemeralReply(player.id, undefined, [eliminationEmbed]);
+    
+    if (success) {
+      log(`تم إرسال رسالة الطرد إلى ${player.username} عبر الرسائل المخفية`, 'discord-debug');
     } else {
-      await interaction.reply({ embeds: [eliminationEmbed], ephemeral: true });
+      log(`فشل في إرسال رسالة الطرد إلى ${player.username} - لا يوجد تفاعل مخزن`, 'discord-game');
     }
   } catch (error) {
     log(`خطأ في إرسال رسالة الطرد للاعب ${player.username}: ${error}`, 'discord-game');

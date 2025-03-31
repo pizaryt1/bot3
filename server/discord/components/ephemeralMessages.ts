@@ -11,7 +11,7 @@ import {
   ChatInputCommandInteraction
 } from 'discord.js';
 import { RoleType } from '@shared/schema';
-import { getStoredInteraction, sendDirectMessage } from '../utils/interactionStorage';
+import { getStoredInteraction, sendEphemeralReply } from '../utils/interactionStorage';
 import { createRoleAssignmentEmbed } from './roleDistributionView';
 import { log } from '../../vite';
 
@@ -93,16 +93,16 @@ export async function sendRoleAssignment(
       }
     }
     
-    // خطة بديلة: إرسال رسالة مباشرة
+    // خطة بديلة: إرسال رسالة مخفية
     const content = `تم تعيينك كـ ${getRoleDisplayName(role)}`;
-    const success = await sendDirectMessage(userId, content, [embed]);
+    const success = await sendEphemeralReply(userId, content, [embed]);
     
-    // إذا نجحت الرسالة المباشرة
+    // إذا نجحت الرسالة المخفية
     if (success) {
-      log(`Role assignment sent to ${username} (${userId}) via DM`, 'discord-debug');
+      log(`Role assignment sent to ${username} (${userId}) via ephemeral message`, 'discord-debug');
       return true;
     } else {
-      log(`Failed to send role assignment to ${username} (${userId}) via both methods`, 'discord');
+      log(`Failed to send role assignment to ${username} (${userId}) - no stored interaction`, 'discord');
       return false;
     }
   } catch (error) {

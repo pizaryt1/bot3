@@ -7,7 +7,7 @@ import {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  SelectMenuBuilder,
+  StringSelectMenuBuilder,
   DMChannel
 } from 'discord.js';
 import { log } from '../../vite';
@@ -79,25 +79,40 @@ export async function getDMChannel(userId: string): Promise<DMChannel | null> {
   return await storeDMChannel(userId);
 }
 
-// Send a direct message to a user using their stored DM channel
-export async function sendDirectMessage(
+// Send an ephemeral message to a user using their stored interaction
+// هذه الوظيفة لا تستخدم الرسائل المباشرة، بل تستخدم الرسائل المخفية في الشات العام فقط
+export async function sendEphemeralReply(
   userId: string, 
   content?: string, 
   embeds: EmbedBuilder[] = [], 
-  components: Array<ActionRowBuilder<ButtonBuilder | SelectMenuBuilder>> = []
+  components: Array<ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>> = []
 ): Promise<boolean> {
   try {
-    const dmChannel = await getDMChannel(userId);
-    if (!dmChannel) return false;
+    const interaction = getStoredInteraction(userId);
+    if (!interaction) {
+      log(`No stored interaction found for user ${userId}, cannot send ephemeral message`, 'discord');
+      return false;
+    }
     
-    await dmChannel.send({ 
-      content, 
-      embeds, 
-      components
-    });
+    // تحقق مما إذا كان التفاعل قد تم الرد عليه بالفعل
+    if (interaction.replied) {
+      await interaction.followUp({ 
+        content, 
+        embeds, 
+        components,
+        ephemeral: true 
+      });
+    } else {
+      await interaction.reply({ 
+        content, 
+        embeds, 
+        components,
+        ephemeral: true 
+      });
+    }
     return true;
   } catch (error) {
-    log(`Error sending direct message to user ${userId}: ${error}`, 'discord');
+    log(`Error sending ephemeral message to user ${userId}: ${error}`, 'discord');
     return false;
   }
 }
