@@ -64,107 +64,145 @@ export function balanceRoles(
     wizard: 0
   };
   
-  // تقسيم الأدوار المفعلة إلى أدوار قرية وأدوار مستذئبين
-  const villageRoles: RoleType[] = [];
-  const werewolfRoles: RoleType[] = [];
-  
-  enabledRoles.forEach(role => {
-    if (role === 'werewolf' || role === 'werewolfLeader') {
-      werewolfRoles.push(role);
-    } else if (role !== 'villager') { // استبعاد دور القروي العادي من القائمة
-      villageRoles.push(role);
-    }
-  });
-  
-  // ----- الطريقة الجديدة المعتمدة فقط على عدد اللاعبين -----
+  // ---- تحديد الأدوار الأمثل بناءً على عدد اللاعبين أولاً ----
   
   // تحديد عدد المستذئبين الكلي والأدوار الأساسية المطلوبة بناءً على عدد اللاعبين
   let totalWerewolves = 0;
-  let needSeer = false;
-  let needGuardian = false;
-  let needDetective = false;
-  let needSniper = false;
-  let needReviver = false;
-  let needWizard = false;
+  const optimalRoles: Record<string, boolean> = {
+    seer: false,
+    guardian: false,
+    werewolfLeader: false,
+    detective: false,
+    sniper: false,
+    reviver: false,
+    wizard: false
+  };
   
   // تحديد الأدوار المطلوبة بناءً على عدد اللاعبين فقط
   if (playerCount <= 4) {
     // 3-4 لاعبين: مستذئب واحد، عراف، حارس
     totalWerewolves = 1;
-    needSeer = true;
-    needGuardian = true;
+    optimalRoles.seer = true;
+    optimalRoles.guardian = true;
   } else if (playerCount <= 6) {
     // 5-6 لاعبين: مستذئبان، عراف، حارس
     totalWerewolves = 2;
-    needSeer = true;
-    needGuardian = true;
+    optimalRoles.seer = true;
+    optimalRoles.guardian = true;
   } else if (playerCount <= 8) {
-    // 7-8 لاعبين: مستذئبان، عراف، حارس، محقق
+    // 7-8 لاعبين: مستذئبان، عراف، حارس، محقق، زعيم المستذئبين
     totalWerewolves = 2;
-    needSeer = true;
-    needGuardian = true;
-    needDetective = true;
+    optimalRoles.seer = true;
+    optimalRoles.guardian = true;
+    optimalRoles.detective = true;
+    optimalRoles.werewolfLeader = true;
   } else if (playerCount <= 10) {
-    // 9-10 لاعبين: 3 مستذئبين، عراف، حارس، محقق، قناص
+    // 9-10 لاعبين: 3 مستذئبين، عراف، حارس، محقق، قناص، زعيم المستذئبين
     totalWerewolves = 3;
-    needSeer = true;
-    needGuardian = true; 
-    needDetective = true;
-    needSniper = true;
+    optimalRoles.seer = true;
+    optimalRoles.guardian = true; 
+    optimalRoles.detective = true;
+    optimalRoles.sniper = true;
+    optimalRoles.werewolfLeader = true;
   } else {
     // 11+ لاعبين: 3-4 مستذئبين، وكل الأدوار المتقدمة
     totalWerewolves = Math.min(4, Math.floor(playerCount / 3));
-    needSeer = true;
-    needGuardian = true;
-    needDetective = true;
-    needSniper = true;
-    needReviver = true;
-    needWizard = true;
+    optimalRoles.seer = true;
+    optimalRoles.guardian = true;
+    optimalRoles.detective = true;
+    optimalRoles.sniper = true;
+    optimalRoles.reviver = true;
+    optimalRoles.wizard = true;
+    optimalRoles.werewolfLeader = true;
   }
   
-  // توزيع أدوار المستذئبين - مع إعطاء الأولوية لزعيم المستذئبين
-  if (totalWerewolves > 0 && werewolfRoles.includes('werewolfLeader')) {
+  // ---- التحقق من الأدوار المفعلة ----
+  
+  // تقسيم الأدوار المفعلة إلى مجموعات (مستذئبين، قرية، قروي)
+  const enabledWerewolves: RoleType[] = [];
+  const enabledVillageRoles: RoleType[] = [];
+  let isVillagerEnabled = false;
+  
+  enabledRoles.forEach(role => {
+    if (role === 'werewolf' || role === 'werewolfLeader') {
+      enabledWerewolves.push(role);
+    } else if (role === 'villager') {
+      isVillagerEnabled = true;
+    } else {
+      enabledVillageRoles.push(role);
+    }
+  });
+  
+  // إذا لم يكن دور القروي مفعلاً، نقوم بتفعيله تلقائياً لأنه ضروري
+  if (!isVillagerEnabled) {
+    enabledRoles.push('villager');
+  }
+  
+  // ---- تطبيق توزيع الأدوار المتوازن ----
+  
+  // 1. توزيع أدوار المستذئبين
+  
+  // إذا كان زعيم المستذئبين مطلوباً ومفعلاً، نضيفه
+  if (optimalRoles.werewolfLeader && enabledWerewolves.includes('werewolfLeader')) {
     roleCount.werewolfLeader = 1;
     totalWerewolves -= 1;
   }
   
-  // إضافة باقي المستذئبين العاديين إن وجدوا
-  if (totalWerewolves > 0 && werewolfRoles.includes('werewolf')) {
+  // إضافة باقي المستذئبين العاديين إذا كانوا مفعلين
+  if (totalWerewolves > 0 && enabledWerewolves.includes('werewolf')) {
     roleCount.werewolf = totalWerewolves;
-  } else {
-    // إذا لم يتم تفعيل دور المستذئب العادي، نستخدم القرويين كبديل
-    // ولكن نحافظ على الحد الأدنى لعدد المستذئبين
+  } else if (totalWerewolves > 0) {
+    // إذا لم يكن دور المستذئب مفعلاً، نستبدله بقرويين
+    log(`Warning: werewolf role not enabled but needed for balance`, 'discord-game');
+    roleCount.villager += totalWerewolves;
     totalWerewolves = 0;
   }
   
-  // توزيع أدوار القرية الخاصة فقط إذا كانت مفعلة
-  if (needSeer && villageRoles.includes('seer')) {
+  // 2. توزيع أدوار القرية الخاصة
+  
+  // ضمان وجود الأدوار الأساسية أولاً (عراف وحارس)
+  if (optimalRoles.seer && enabledVillageRoles.includes('seer')) {
     roleCount.seer = 1;
+  } else if (optimalRoles.seer) {
+    // إذا لم يكن العراف مفعلاً لكنه مطلوب، نستبدله بقروي
+    log(`Warning: seer role not enabled but needed for balance`, 'discord-game');
+    roleCount.villager += 1;
   }
   
-  if (needGuardian && villageRoles.includes('guardian')) {
+  if (optimalRoles.guardian && enabledVillageRoles.includes('guardian')) {
     roleCount.guardian = 1;
+  } else if (optimalRoles.guardian) {
+    // إذا لم يكن الحارس مفعلاً لكنه مطلوب، نستبدله بقروي
+    log(`Warning: guardian role not enabled but needed for balance`, 'discord-game');
+    roleCount.villager += 1;
   }
   
-  if (needDetective && villageRoles.includes('detective')) {
+  // إضافة باقي الأدوار المتقدمة إذا كانت مطلوبة ومفعلة
+  if (optimalRoles.detective && enabledVillageRoles.includes('detective')) {
     roleCount.detective = 1;
   }
   
-  if (needSniper && villageRoles.includes('sniper')) {
+  if (optimalRoles.sniper && enabledVillageRoles.includes('sniper')) {
     roleCount.sniper = 1;
   }
   
-  if (needReviver && villageRoles.includes('reviver')) {
+  if (optimalRoles.reviver && enabledVillageRoles.includes('reviver')) {
     roleCount.reviver = 1;
   }
   
-  if (needWizard && villageRoles.includes('wizard')) {
+  if (optimalRoles.wizard && enabledVillageRoles.includes('wizard')) {
     roleCount.wizard = 1;
   }
   
-  // حساب عدد الأدوار المخصصة وإكمال بقية اللاعبين كقرويين عاديين
+  // 3. إكمال بقية اللاعبين كقرويين عاديين
   const assignedRoles = Object.values(roleCount).reduce((sum, count) => sum + count, 0);
-  roleCount.villager = playerCount - assignedRoles;
+  roleCount.villager += (playerCount - assignedRoles);
+  
+  // التأكد من أن عدد القرويين لا يمكن أن يكون سالباً
+  if (roleCount.villager < 0) {
+    log(`Error in role balance: got negative villager count`, 'discord-game');
+    roleCount.villager = 0;
+  }
   
   // تسجيل توزيع الأدوار
   log(`Role balance for ${playerCount} players: ${JSON.stringify(roleCount)}`, 'discord-game');

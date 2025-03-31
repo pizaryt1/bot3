@@ -13,8 +13,56 @@ import { log } from '../../vite';
 import { getGameManager } from '../game/gameManager';
 import { RoleType } from '@shared/schema';
 import { createRoleDistributionEmbed } from './roleDistributionView';
-import { getOptimalRoles } from '../utils/roleBalancer';
+import { getOptimalRoles, balanceRoles } from '../utils/roleBalancer';
 import { storeInteraction } from '../utils/interactionStorage';
+
+// دالة مساعدة لعرض التوزيع المثالي للأدوار بناءً على عدد اللاعبين
+function getIdealRoleDistribution(playerCount: number): string {
+  // استخدام مصفوفة من جميع الأدوار الممكنة لحساب التوزيع المثالي
+  const allPossibleRoles: RoleType[] = [
+    'villager', 'werewolf', 'werewolfLeader', 'seer', 
+    'guardian', 'detective', 'sniper', 'reviver', 'wizard'
+  ];
+  
+  // الحصول على التوزيع المثالي
+  const roleDistribution = balanceRoles(playerCount, allPossibleRoles);
+  
+  // بناء نص وصفي للتوزيع
+  let distributionText = '';
+  
+  // إضافة أدوار المستذئبين أولاً
+  const werewolfRoles = [
+    { role: 'werewolf', count: roleDistribution.werewolf },
+    { role: 'werewolfLeader', count: roleDistribution.werewolfLeader }
+  ].filter(r => r.count > 0);
+  
+  if (werewolfRoles.length > 0) {
+    distributionText += '**فريق المستذئبين:**\n';
+    werewolfRoles.forEach(r => {
+      distributionText += `${getRoleEmoji(r.role as RoleType)} ${getRoleDisplayName(r.role as RoleType)}: ${r.count}\n`;
+    });
+  }
+  
+  // إضافة أدوار القرية
+  const villageRoles = [
+    { role: 'villager', count: roleDistribution.villager },
+    { role: 'seer', count: roleDistribution.seer },
+    { role: 'guardian', count: roleDistribution.guardian },
+    { role: 'detective', count: roleDistribution.detective },
+    { role: 'sniper', count: roleDistribution.sniper },
+    { role: 'reviver', count: roleDistribution.reviver },
+    { role: 'wizard', count: roleDistribution.wizard }
+  ].filter(r => r.count > 0);
+  
+  if (villageRoles.length > 0) {
+    distributionText += '**فريق القرية:**\n';
+    villageRoles.forEach(r => {
+      distributionText += `${getRoleEmoji(r.role as RoleType)} ${getRoleDisplayName(r.role as RoleType)}: ${r.count}\n`;
+    });
+  }
+  
+  return distributionText;
+}
 
 // Create the role configuration embed
 export async function createRoleConfigEmbed(gameId: number) {
@@ -50,7 +98,9 @@ export async function createRoleConfigEmbed(gameId: number) {
       },
       {
         name: 'توازن الأدوار',
-        value: 'سيتم تحديد توازن الأدوار تلقائيًا عند بدء اللعبة بناءً على عدد اللاعبين والأدوار المفعلة.'
+        value: 'سيتم تحديد توازن الأدوار بشكل أساسي حسب عدد اللاعبين، مع مراعاة الأدوار المفعلة.\n' +
+               `🌟 **التوزيع المثالي لـ ${players.length} لاعبين:**\n` +
+               getIdealRoleDistribution(players.length)
       }
     )
     .setFooter({ text: 'للمالك فقط - قم بتفعيل الأدوار التي ترغب بها ثم ابدأ الجولة' });
@@ -227,6 +277,12 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
       });
       return;
     }
+    
+    // Add a notice about how roles are distributed
+    await interaction.followUp({
+      content: `⚠️ **ملاحظة هامة**: سيتم توزيع الأدوار بشكل أساسي حسب عدد اللاعبين (${players.length} لاعبين) مع مراعاة الأدوار المفعلة. التوزيع النهائي قد يختلف عن الأدوار المفعلة إذا تطلب ذلك توازن اللعبة.`,
+      ephemeral: true
+    });
     
     // Assign roles to players
     gameManager.assignRoles(gameId, enabledRoles);
