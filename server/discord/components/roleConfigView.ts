@@ -17,6 +17,7 @@ import { RoleType } from '@shared/schema';
 import { createRoleDistributionEmbed } from './roleDistributionView';
 import { getOptimalRoles, balanceRoles } from '../utils/roleBalancer';
 import { storeInteraction } from '../utils/interactionStorage';
+import { startNightPhase } from './gamePhaseManager';
 
 // دالة مساعدة لعرض التوزيع المثالي للأدوار بناءً على عدد اللاعبين
 function getIdealRoleDistribution(playerCount: number): string {
@@ -381,6 +382,15 @@ export async function handleRoleConfigViewButtons(interaction: ButtonInteraction
     // Send role assignments to players
     setTimeout(() => {
       gameManager.sendRoleAssignments(gameId);
+      
+      // بعد إرسال الأدوار، ابدأ مرحلة الليل الأولى
+      setTimeout(async () => {
+        try {
+          await startNightPhase(gameId, interaction);
+        } catch (error) {
+          log(`Error starting first night phase: ${error}`, 'discord-game');
+        }
+      }, 5000); // بدء الليل بعد 5 ثوانٍ من إرسال الأدوار
     }, 8000); // تأخير أطول قليلاً للتأكد من أن الصورة تم عرضها أولاً
   }
 }

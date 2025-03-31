@@ -15,6 +15,23 @@ export interface Player {
   username: string;
   role?: RoleType;
   isAlive: boolean;
+  // للتتبع إذا قام اللاعب بإجراء في الليل
+  nightActionDone?: boolean;
+  // للتتبع إذا قام اللاعب بالتصويت
+  voted?: boolean;
+  // لتخزين معرّف اللاعب الذي صوت له
+  votedFor?: string;
+  // لتخزين العدد الإجمالي للأصوات ضد هذا اللاعب
+  voteCount?: number;
+  // لمعرفة إذا كان اللاعب محميًا من قبل الحارس
+  protected?: boolean;
+}
+
+// نوع هدف إجراء ليلي
+export interface NightActionTarget {
+  targetId: string;
+  actionType: string;
+  successful?: boolean;
 }
 
 // Game status type
@@ -29,6 +46,12 @@ export class GameState {
   public day: number;
   public players: Map<string, Player>;
   private countdownTime: number;
+  // خاص بإجراءات الليل
+  public nightActions: Map<string, NightActionTarget>;
+  // خاص بالتصويت
+  public votes: Map<string, string>;
+  // لتخزين ضحية المستذئبين في الليلة الحالية
+  public currentNightVictim: string | null;
   
   constructor(id: number, ownerId: string) {
     this.id = id;
@@ -38,6 +61,9 @@ export class GameState {
     this.day = 0;
     this.players = new Map();
     this.countdownTime = 30;
+    this.nightActions = new Map();
+    this.votes = new Map();
+    this.currentNightVictim = null;
     
     // Add owner as the first player
     this.addPlayer(ownerId, 'Owner'); // Username will be updated later
@@ -168,5 +194,175 @@ export class GameState {
     ).length;
     
     return aliveWerewolves === 0 ? 'villagers' : 'werewolves';
+  }
+  
+  // ============= وظائف مرحلة الليل =============
+  
+  // تسجيل إجراء ليلي
+  addNightAction(playerId: string, target: NightActionTarget): void {
+    this.nightActions.set(playerId, target);
+    
+    // تحديث حالة اللاعب للإشارة إلى أنه قام بإجراء ليلي
+    const player = this.players.get(playerId);
+    if (player) {
+      player.nightActionDone = true;
+      this.players.set(playerId, player);
+    }
+  }
+  
+  // تعيين الضحية الحالية للمستذئبين
+  setWerewolfVictim(victimId: string | null): void {
+    this.currentNightVictim = victimId;
+  }
+  
+  // إعادة تعيين جميع الإجراءات الليلية عند بداية ليلة جديدة
+  resetNightActions(): void {
+    this.nightActions.clear();
+    this.currentNightVictim = null;
+    
+    // إعادة تعيين حالة الإجراءات الليلية لجميع اللاعبين
+    Array.from(this.players.keys()).forEach(id => {
+      const player = this.players.get(id);
+      if (player) {
+        player.nightActionDone = false;
+        player.protected = false;
+        this.players.set(id, player);
+      }
+    });
+  }
+  
+  // فحص ما إذا كان جميع اللاعبين الأحياء الذين لديهم إجراءات ليلية قد قاموا بها
+  areAllNightActionsDone(): boolean {
+    const alivePlayers = this.getAlivePlayers();
+    
+    // اللاعبون الذين لديهم إجراءات ليلية ولم يقوموا بها بعد
+    const pendingPlayers = alivePlayers.filter(player => {
+      // المستذئبين دائماً لديهم إجراء ليلي
+      if ((player.role === 'werewolf' || player.role === 'werewolfLeader') && !player.nightActionDone) {
+        return true;
+      }
+      
+      // الأدوار الأخرى التي لها إجراءات ليلية
+      if (['seer', 'guardian', 'detective', 'sniper', 'reviver', 'wizard'].includes(player.role || '') && !player.nightActionDone) {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    return pendingPlayers.length === 0;
+  }
+  
+  // ============= وظائف مرحلة التصويت =============
+  
+  // تسجيل تصويت
+  addVote(voterId: string, targetId: string): void {
+    // تخزين التصويت
+    this.votes.set(voterId, targetId);
+    
+    // تحديث حالة المصوت
+    const voter = this.players.get(voterId);
+    if (voter) {
+      voter.voted = true;
+      voter.votedFor = targetId;
+      this.players.set(voterId, voter);
+    }
+    
+    // زيادة عدد الأصوات للهدف
+    const target = this.players.get(targetId);
+    if (target) {
+      target.voteCount = (target.voteCount || 0) + 1;
+      this.players.set(targetId, target);
+    }
+  }
+  
+  // إزالة تصويت (إذا غير اللاعب تصويته)
+  removeVote(voterId: string): void {
+    const previousVote = this.votes.get(voterId);
+    if (previousVote) {
+      // تقليل عدد الأصوات للهدف السابق
+      const target = this.players.get(previousVote);
+      if (target && target.voteCount && target.voteCount > 0) {
+        target.voteCount--;
+        this.players.set(previousVote, target);
+      }
+    }
+    
+    // إزالة التصويت
+    this.votes.delete(voterId);
+    
+    // تحديث حالة المصوت
+    const voter = this.players.get(voterId);
+    if (voter) {
+      voter.voted = false;
+      voter.votedFor = undefined;
+      this.players.set(voterId, voter);
+    }
+  }
+  
+  // إعادة تعيين جميع التصويتات لبدء تصويت جديد
+  resetVotes(): void {
+    this.votes.clear();
+    
+    // إعادة تعيين حالات التصويت لجميع اللاعبين
+    Array.from(this.players.keys()).forEach(id => {
+      const player = this.players.get(id);
+      if (player) {
+        player.voted = false;
+        player.votedFor = undefined;
+        player.voteCount = 0;
+        this.players.set(id, player);
+      }
+    });
+  }
+  
+  // تحقق مما إذا كان جميع اللاعبين الأحياء قد صوتوا
+  areAllVotesDone(): boolean {
+    const alivePlayers = this.getAlivePlayers();
+    const pendingVoters = alivePlayers.filter(player => !player.voted);
+    return pendingVoters.length === 0;
+  }
+  
+  // الحصول على اللاعب الذي حصل على أكثر عدد من الأصوات
+  getMostVotedPlayer(): Player | null {
+    const alivePlayers = this.getAlivePlayers();
+    
+    // فرز اللاعبين حسب عدد الأصوات بترتيب تنازلي
+    const sortedPlayers = [...alivePlayers].sort((a, b) => {
+      return (b.voteCount || 0) - (a.voteCount || 0);
+    });
+    
+    // إذا لا يوجد لاعبين أو لم يصوت أحد
+    if (sortedPlayers.length === 0 || (sortedPlayers[0].voteCount || 0) === 0) {
+      return null;
+    }
+    
+    // في حالة التعادل، اختر عشوائياً
+    const highestVotes = sortedPlayers[0].voteCount || 0;
+    const tiedPlayers = sortedPlayers.filter(p => (p.voteCount || 0) === highestVotes);
+    
+    if (tiedPlayers.length > 1) {
+      const randomIndex = Math.floor(Math.random() * tiedPlayers.length);
+      return tiedPlayers[randomIndex];
+    }
+    
+    return sortedPlayers[0];
+  }
+  
+  // إعادة تعيين اللعبة للمرحلة التالية
+  prepareNextPhase(): void {
+    if (this.phase === GamePhase.NIGHT) {
+      // انتقال من الليل إلى النهار
+      this.phase = GamePhase.DAY;
+    } else if (this.phase === GamePhase.DAY) {
+      // انتقال من النهار إلى التصويت
+      this.phase = GamePhase.VOTING;
+      this.resetVotes();
+    } else if (this.phase === GamePhase.VOTING) {
+      // انتقال من التصويت إلى الليل
+      this.phase = GamePhase.NIGHT;
+      this.day++;
+      this.resetNightActions();
+    }
   }
 }

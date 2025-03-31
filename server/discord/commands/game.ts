@@ -15,6 +15,7 @@ import { handleRoleConfigViewButtons } from '../components/roleConfigView';
 import { handleInitialViewButtons } from '../components/initialView';
 import { handleModalSubmit } from '../components/modals';
 import { getGameManager } from '../game/gameManager';
+import { registerGamePhaseButtons } from '../components/gamePhaseManager';
 
 // Define command type
 interface DiscordCommand {
@@ -238,6 +239,9 @@ export function registerCommands(client: Client) {
   
   // Register select menu handlers
   registerSelectMenuHandlers(client);
+  
+  // Register game phase button handlers
+  registerGamePhaseButtons(client);
   
   log('Registered all commands and interaction handlers', 'discord');
 }

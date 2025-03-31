@@ -327,6 +327,26 @@ export class GameManager {
       [array[i], array[j]] = [array[j], array[i]];
     }
   }
+  
+  // Reset a game to allow starting a new one
+  async resetGame(gameId: number): Promise<boolean> {
+    try {
+      // Stop any active countdown
+      this.stopCountdown(gameId);
+      
+      // Remove game from memory
+      this.games.delete(gameId);
+      
+      // Update game status in storage
+      await storage.endGame(gameId);
+      
+      log(`Reset game ${gameId}`, 'game-manager');
+      return true;
+    } catch (error) {
+      log(`Error resetting game ${gameId}: ${error}`, 'game-manager');
+      return false;
+    }
+  }
 }
 
 // Initialize the game manager as a singleton

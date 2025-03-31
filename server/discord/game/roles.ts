@@ -1,145 +1,177 @@
 import { RoleType } from '@shared/schema';
 
-// Role information
-export interface Role {
-  name: RoleType;
-  arabicName: string;
-  team: 'village' | 'werewolf';
+// تعريف نموذج الدور
+interface Role {
+  id: RoleType;
+  name: string;
   description: string;
-  emoji: string;
-  color: string;
-  priority: number; // For night phase order
-  isBasic: boolean;
+  team: 'villagers' | 'werewolves';
+  nightAction: boolean;
+  actionDescription?: string;
+  image: string;
+  icon: string;
+  color: number;
 }
 
-// Define all roles
-export const ROLES: Record<RoleType, Role> = {
+// دليل الأدوار
+const roles: Record<RoleType, Role> = {
   villager: {
-    name: 'villager',
-    arabicName: 'القروي',
-    team: 'village',
-    description: 'لا يمتلك المهارات الخاصة، ولكن هدفه هو التعاون مع باقي القرويين لكشف المستذئبين وطردهم.',
-    emoji: '🧑‍🌾',
-    color: '#57F287',
-    priority: 0,
-    isBasic: true
+    id: 'villager',
+    name: 'قروي',
+    description: 'أنت قروي عادي، مهمتك هي اكتشاف المستذئبين والتصويت ضدهم',
+    team: 'villagers',
+    nightAction: false,
+    image: 'القروي.webp',
+    icon: 'رمز القروي.png',
+    color: 0x57F287 // لون أخضر
   },
   
   werewolf: {
-    name: 'werewolf',
-    arabicName: 'المستذئب',
-    team: 'werewolf',
-    description: 'يعمل ضمن فريق المستذئبين، ويختار لاعبًا لقتله في مرحلة الليل. يجب أن يظل مخفيًا ويخدع القرويين.',
-    emoji: '🐺',
-    color: '#ED4245',
-    priority: 10,
-    isBasic: true
+    id: 'werewolf',
+    name: 'مستذئب',
+    description: 'أنت مستذئب، مهمتك هي التظاهر كقروي والقضاء على سكان القرية ليلاً',
+    team: 'werewolves',
+    nightAction: true,
+    actionDescription: 'التصويت مع المستذئبين الآخرين لاختيار ضحية',
+    image: 'مستذئب.png',
+    icon: 'رمز المستذئب.png',
+    color: 0xED4245 // لون أحمر
   },
   
   werewolfLeader: {
-    name: 'werewolfLeader',
-    arabicName: 'زعيم المستذئبين',
-    team: 'werewolf',
-    description: 'يمتلك القدرة على تحويل لاعب آخر إلى مستذئب (لمرة واحدة فقط خلال اللعبة).',
-    emoji: '👑',
-    color: '#8B0000',
-    priority: 11,
-    isBasic: false
+    id: 'werewolfLeader',
+    name: 'زعيم المستذئبين',
+    description: 'أنت زعيم المستذئبين، لديك القرار النهائي في اختيار الضحية',
+    team: 'werewolves',
+    nightAction: true,
+    actionDescription: 'اختيار ضحية للقتل بالتشاور مع المستذئبين الآخرين',
+    image: 'زعيم المستذئبين.png',
+    icon: 'رمز زعيم المستذئبين.png',
+    color: 0xED4245 // لون أحمر
   },
   
   seer: {
-    name: 'seer',
-    arabicName: 'العراف',
-    team: 'village',
-    description: 'يستطيع كشف هوية أي لاعب في كل ليلة (هل هو مستذئب أم قروي).',
-    emoji: '👁️',
-    color: '#5865F2',
-    priority: 20,
-    isBasic: true
-  },
-  
-  detective: {
-    name: 'detective',
-    arabicName: 'المحقق',
-    team: 'village',
-    description: 'يستطيع كشف هوية لاعب بشكل دقيق خلال مرحلة الليل.',
-    emoji: '🔍',
-    color: '#FEE75C',
-    priority: 25,
-    isBasic: false
+    id: 'seer',
+    name: 'العراف',
+    description: 'أنت العراف، يمكنك معرفة هوية لاعب واحد كل ليلة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'اختيار لاعب لمعرفة إذا كان مستذئبًا أم لا',
+    image: 'العراف.webp',
+    icon: 'رمز العراف.png',
+    color: 0x5865F2 // لون أزرق
   },
   
   guardian: {
-    name: 'guardian',
-    arabicName: 'الحارس',
-    team: 'village',
-    description: 'يختار لاعبًا واحدًا لحمايته من القتل خلال الليل، ولا يمكنه حماية نفس الشخص ليلتين متتاليتين.',
-    emoji: '🛡️',
-    color: '#57F287',
-    priority: 30,
-    isBasic: true
+    id: 'guardian',
+    name: 'الحارس',
+    description: 'أنت الحارس، يمكنك حماية لاعب واحد من هجوم المستذئبين كل ليلة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'اختيار لاعب لحمايته من هجوم المستذئبين',
+    image: 'الحارس.webp',
+    icon: 'رمز الحارس.png',
+    color: 0x3498DB // لون أزرق فاتح
+  },
+  
+  detective: {
+    id: 'detective',
+    name: 'المحقق',
+    description: 'أنت المحقق، يمكنك التحقق من هوية لاعب واحد كل ليلة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'اختيار لاعب للتحقق من هويته',
+    image: 'المحقق.webp',
+    icon: 'رمز المحقق.png',
+    color: 0x9B59B6 // لون أرجواني
   },
   
   sniper: {
-    name: 'sniper',
-    arabicName: 'القناص',
-    team: 'village',
-    description: 'يمتلك طلقتين يمكنه استخدامهما لقتل لاعب. يجب عليه أن يكون دقيقًا في اختيار هدفه.',
-    emoji: '🎯',
-    color: '#FF7B1C',
-    priority: 35,
-    isBasic: false
+    id: 'sniper',
+    name: 'القناص',
+    description: 'أنت القناص، يمكنك قتل لاعب واحد فقط خلال اللعبة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'اختيار لاعب لقتله (مرة واحدة فقط في اللعبة)',
+    image: 'القناص.webp',
+    icon: 'رمز القناص.png',
+    color: 0xE67E22 // لون برتقالي
   },
   
   reviver: {
-    name: 'reviver',
-    arabicName: 'المنعش',
-    team: 'village',
-    description: 'يمكنه إحياء لاعب قُتل خلال الليل مرة واحدة طوال اللعبة.',
-    emoji: '💓',
-    color: '#57F287',
-    priority: 40,
-    isBasic: false
+    id: 'reviver',
+    name: 'المنعش',
+    description: 'أنت المنعش، يمكنك إحياء لاعب ميت مرة واحدة خلال اللعبة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'اختيار لاعب ميت لإحيائه (مرة واحدة فقط في اللعبة)',
+    image: 'المنعش.webp',
+    icon: 'رمز المنعش.png',
+    color: 0x1ABC9C // لون أخضر مزرق
   },
   
   wizard: {
-    name: 'wizard',
-    arabicName: 'الساحر',
-    team: 'village',
-    description: 'يمتلك إكسيرًا يمكنه استخدامه لحماية كل اللاعبين من القتل في مرحلة الليل، أو استخدام سم لقتل لاعب معين.',
-    emoji: '🧙',
-    color: '#9B59B6',
-    priority: 45,
-    isBasic: false
+    id: 'wizard',
+    name: 'الساحر',
+    description: 'أنت الساحر، يمكنك استخدام إكسير الحياة أو السم مرة واحدة لكل منهما خلال اللعبة',
+    team: 'villagers',
+    nightAction: true,
+    actionDescription: 'إنقاذ الضحية باستخدام إكسير الحياة أو قتل لاعب باستخدام السم',
+    image: 'الساحر.png',
+    icon: 'رمز الساحر.png',
+    color: 0xFF9800 // لون برتقالي
   }
 };
 
-// Get all roles
+/**
+ * الحصول على معلومات دور معين
+ */
+export function getRole(role: RoleType): Role {
+  return roles[role];
+}
+
+/**
+ * الحصول على قائمة جميع الأدوار المتاحة
+ */
 export function getAllRoles(): Role[] {
-  return Object.values(ROLES);
+  return Object.values(roles);
 }
 
-// Get basic roles
+/**
+ * الحصول على قائمة الأدوار الأساسية
+ */
 export function getBasicRoles(): Role[] {
-  return Object.values(ROLES).filter(role => role.isBasic);
+  return [
+    roles.villager,
+    roles.werewolf,
+    roles.werewolfLeader,
+    roles.seer
+  ];
 }
 
-// Get additional roles
-export function getAdditionalRoles(): Role[] {
-  return Object.values(ROLES).filter(role => !role.isBasic);
+/**
+ * الحصول على قائمة الأدوار الخاصة
+ */
+export function getSpecialRoles(): Role[] {
+  return [
+    roles.guardian,
+    roles.detective,
+    roles.sniper,
+    roles.reviver,
+    roles.wizard
+  ];
 }
 
-// Get village team roles
-export function getVillageRoles(): Role[] {
-  return Object.values(ROLES).filter(role => role.team === 'village');
+/**
+ * الحصول على قائمة أدوار القرويين
+ */
+export function getVillagerRoles(): Role[] {
+  return Object.values(roles).filter(role => role.team === 'villagers');
 }
 
-// Get werewolf team roles
+/**
+ * الحصول على قائمة أدوار المستذئبين
+ */
 export function getWerewolfRoles(): Role[] {
-  return Object.values(ROLES).filter(role => role.team === 'werewolf');
-}
-
-// Get role by name
-export function getRole(name: RoleType): Role {
-  return ROLES[name];
+  return Object.values(roles).filter(role => role.team === 'werewolves');
 }
