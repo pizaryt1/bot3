@@ -1409,6 +1409,26 @@ export function registerGamePhaseButtons(client: any) {
     // تجاهل التفاعلات غير المدعومة
     if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
     
+    // تجاهل التفاعلات التي ليس لها customId
+    if (!interaction.customId) return;
+    
+    // فحص إذا كان التفاعل من نوع الأزرار التي نهتم بها
+    const isRelevantButton = 
+      interaction.customId.startsWith('werewolf_action_') ||
+      interaction.customId.startsWith('seer_action_') ||
+      interaction.customId.startsWith('guardian_action_') ||
+      interaction.customId.startsWith('detective_action_') ||
+      interaction.customId.startsWith('sniper_action_') ||
+      interaction.customId.startsWith('reviver_action_') ||
+      interaction.customId.startsWith('wizard_action_') ||
+      interaction.customId.startsWith('start_night_') ||
+      interaction.customId.startsWith('end_discussion_') ||
+      interaction.customId.startsWith('start_voting_') ||
+      interaction.customId.startsWith('end_voting_') ||
+      interaction.customId.startsWith('new_game_');
+    
+    if (!isRelevantButton) return;
+    
     try {
       // استخراج معرف اللعبة من معرف الزر
       const customId = interaction.customId;
