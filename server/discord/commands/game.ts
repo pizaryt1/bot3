@@ -43,17 +43,22 @@ const gameCommand = {
     }),
   async execute(interaction: ChatInputCommandInteraction) {
     try {
-      // Check if there's already an active game in this channel
+      // تحقق مما إذا كانت هناك لعبة نشطة بالفعل في هذا السيرفر (بدلاً من القناة فقط)
       const activeGames = await storage.getActiveGames();
-      const channelActiveGame = activeGames.find(game => 
-        game.channelId === interaction.channelId && 
-        game.status !== 'ended'
-      );
+      const guildId = interaction.guildId;
       
-      // If there's an active game, don't allow starting a new one
-      if (channelActiveGame) {
+      // فلترة الألعاب النشطة في نفس السيرفر
+      const serverActiveGames = activeGames.filter(game => {
+        // الحصول على معرف السيرفر من القناة
+        // نفترض أن جميع القنوات من نفس السيرفر لها نفس معرف السيرفر في الـ 18 حرفاً الأولى
+        const gameGuildId = game.channelId.substring(0, 18);
+        return gameGuildId === guildId && game.status !== 'ended';
+      });
+      
+      // إذا كانت هناك لعبة نشطة في السيرفر، لا نسمح ببدء لعبة جديدة
+      if (serverActiveGames.length > 0) {
         await interaction.reply({
-          content: `⛔ **لا يمكن بدء لعبة جديدة**\n\nيوجد بالفعل لعبة نشطة في هذه القناة. يجب إنهاء اللعبة الحالية أولاً قبل بدء لعبة جديدة.`,
+          content: `⛔ **لا يمكن بدء لعبة جديدة**\n\nيوجد بالفعل لعبة نشطة في هذا السيرفر. يجب إنهاء اللعبة الحالية أولاً قبل بدء لعبة جديدة.`,
           flags: [1 << 6]
         });
         return;
@@ -223,30 +228,49 @@ export function registerButtonHandlers(client: Client) {
         // معالجة تفاعلات مراحل اللعبة وفقًا لنوع الزر
         if (buttonId.startsWith('werewolf_action_')) {
           log(`معالجة إجراء المستذئب: ${buttonId}`, 'discord-debug');
-          // استخراج معرّف اللاعب المستهدف من معرّف الزر
-          const targetId = parts[parts.length - 1];
+          
+          // التأكد من أن التفاعل معلق قبل إنشاء الرد
+          try {
+            await interaction.deferUpdate();
+          } catch (error) {
+            log(`خطأ في تأجيل تحديث إجراء المستذئب: ${error}`, 'discord-error');
+          }
+          
+          // استخراج معرّفات من customId
+          // تنسيق المعرف: werewolf_action_GAMEID_PLAYERID
+          const gameIdFromButton = parseInt(parts[2]);
+          const targetId = parts[3];
+          
+          // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+          const targetGameState = getGameManager().getGameState(gameIdFromButton);
+          
+          if (!targetGameState) {
+            await interaction.editReply({
+              content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+            });
+            return;
+          }
           
           // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
+          const target = targetGameState.getPlayer(targetId);
           if (!target) {
-            await interaction.reply({
-              content: 'اللاعب المستهدف غير موجود',
-              flags: [1 << 6]
+            await interaction.editReply({
+              content: 'اللاعب المستهدف غير موجود'
             });
             return;
           }
           
           // تسجيل إجراء المستذئب
-          gameState.addNightAction(interaction.user.id, {
+          targetGameState.addNightAction(interaction.user.id, {
             targetId,
             actionType: 'kill'
           });
           
           // تعيين الضحية الحالية
-          gameState.setWerewolfVictim(targetId);
+          targetGameState.setWerewolfVictim(targetId);
           
           // إرسال تأكيد الإجراء
-          await interaction.update({
+          await interaction.editReply({
             content: `تم اختيار **${target.username}** كضحية للمستذئبين هذه الليلة.`,
             components: [],
             embeds: []
@@ -270,21 +294,40 @@ export function registerButtonHandlers(client: Client) {
         // معالجة تفاعلات الأدوار الأخرى
         else if (buttonId.startsWith('seer_action_')) {
           log(`معالجة إجراء العراف: ${buttonId}`, 'discord-debug');
-          // استخراج معرّف اللاعب المستهدف من معرّف الزر
-          const targetId = parts[parts.length - 1];
+          
+          // التأكد من أن التفاعل معلق قبل إنشاء الرد
+          try {
+            await interaction.deferUpdate();
+          } catch (error) {
+            log(`خطأ في تأجيل تحديث إجراء العراف: ${error}`, 'discord-error');
+          }
+          
+          // استخراج معرّفات من customId
+          // تنسيق المعرف: seer_action_GAMEID_PLAYERID
+          const gameIdFromButton = parseInt(parts[2]);
+          const targetId = parts[3];
+          
+          // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+          const targetGameState = getGameManager().getGameState(gameIdFromButton);
+          
+          if (!targetGameState) {
+            await interaction.editReply({
+              content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+            });
+            return;
+          }
           
           // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
+          const target = targetGameState.getPlayer(targetId);
           if (!target) {
-            await interaction.reply({
-              content: 'اللاعب المستهدف غير موجود',
-              flags: [1 << 6]
+            await interaction.editReply({
+              content: 'اللاعب المستهدف غير موجود'
             });
             return;
           }
           
           // تسجيل إجراء العراف
-          gameState.addNightAction(interaction.user.id, {
+          targetGameState.addNightAction(interaction.user.id, {
             targetId,
             actionType: 'reveal'
           });
@@ -307,7 +350,7 @@ export function registerButtonHandlers(client: Client) {
             `);
           
           // إرسال نتيجة الكشف
-          await interaction.update({
+          await interaction.editReply({
             embeds: [resultEmbed],
             components: [],
             content: null
@@ -330,21 +373,40 @@ export function registerButtonHandlers(client: Client) {
         }
         else if (buttonId.startsWith('guardian_action_')) {
           log(`معالجة إجراء الحارس: ${buttonId}`, 'discord-debug');
-          // استخراج معرّف اللاعب المستهدف من معرّف الزر
-          const targetId = parts[parts.length - 1];
+          
+          // التأكد من أن التفاعل معلق قبل إنشاء الرد
+          try {
+            await interaction.deferUpdate();
+          } catch (error) {
+            log(`خطأ في تأجيل تحديث إجراء الحارس: ${error}`, 'discord-error');
+          }
+          
+          // استخراج معرّفات من customId
+          // تنسيق المعرف: guardian_action_GAMEID_PLAYERID
+          const gameIdFromButton = parseInt(parts[2]);
+          const targetId = parts[3];
+          
+          // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+          const targetGameState = getGameManager().getGameState(gameIdFromButton);
+          
+          if (!targetGameState) {
+            await interaction.editReply({
+              content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+            });
+            return;
+          }
           
           // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
+          const target = targetGameState.getPlayer(targetId);
           if (!target) {
-            await interaction.reply({
-              content: 'اللاعب المستهدف غير موجود',
-              flags: [1 << 6]
+            await interaction.editReply({
+              content: 'اللاعب المستهدف غير موجود'
             });
             return;
           }
           
           // تسجيل إجراء الحارس
-          gameState.addNightAction(interaction.user.id, {
+          targetGameState.addNightAction(interaction.user.id, {
             targetId,
             actionType: 'protect'
           });
@@ -352,11 +414,11 @@ export function registerButtonHandlers(client: Client) {
           // تعيين حالة الحماية للاعب المستهدف
           if (target) {
             target.protected = true;
-            gameState.players.set(targetId, target);
+            targetGameState.players.set(targetId, target);
           }
           
           // إرسال تأكيد الإجراء
-          await interaction.update({
+          await interaction.editReply({
             content: `تم اختيار **${target.username}** للحماية هذه الليلة.`,
             components: [],
             embeds: []
@@ -379,21 +441,40 @@ export function registerButtonHandlers(client: Client) {
         }
         else if (buttonId.startsWith('detective_action_')) {
           log(`معالجة إجراء المحقق: ${buttonId}`, 'discord-debug');
-          // استخراج معرّف اللاعب المستهدف من معرّف الزر
-          const targetId = parts[parts.length - 1];
+          
+          // التأكد من أن التفاعل معلق قبل إنشاء الرد
+          try {
+            await interaction.deferUpdate();
+          } catch (error) {
+            log(`خطأ في تأجيل تحديث إجراء المحقق: ${error}`, 'discord-error');
+          }
+          
+          // استخراج معرّفات من customId
+          // تنسيق المعرف: detective_action_GAMEID_PLAYERID
+          const gameIdFromButton = parseInt(parts[2]);
+          const targetId = parts[3];
+          
+          // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+          const targetGameState = getGameManager().getGameState(gameIdFromButton);
+          
+          if (!targetGameState) {
+            await interaction.editReply({
+              content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+            });
+            return;
+          }
           
           // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
+          const target = targetGameState.getPlayer(targetId);
           if (!target) {
-            await interaction.reply({
-              content: 'اللاعب المستهدف غير موجود',
-              flags: [1 << 6]
+            await interaction.editReply({
+              content: 'اللاعب المستهدف غير موجود'
             });
             return;
           }
           
           // تسجيل إجراء المحقق
-          gameState.addNightAction(interaction.user.id, {
+          targetGameState.addNightAction(interaction.user.id, {
             targetId,
             actionType: 'investigate'
           });
@@ -413,7 +494,7 @@ export function registerButtonHandlers(client: Client) {
             `);
           
           // إرسال نتيجة التحقيق
-          await interaction.update({
+          await interaction.editReply({
             embeds: [resultEmbed],
             components: [],
             content: null
@@ -459,8 +540,13 @@ export function registerButtonHandlers(client: Client) {
             log(`Error deferring update: ${error}`, 'discord-error');
           });
           
+          // هذا الزر غير مستخدم الآن (تم استبداله بالبدء التلقائي)
           if (buttonId.startsWith('start_night_')) {
-            startNightPhase(gameId, interaction);
+            // لن نفعل شيئًا هنا لأن مرحلة الليل تبدأ تلقائيًا
+            await interaction.followUp({
+              content: 'ستبدأ الليلة تلقائيًا، لا داعي للضغط على هذا الزر.',
+              ephemeral: true
+            });
           }
           else if (buttonId.startsWith('end_discussion_')) {
             // التحقق من أن الضاغط على الزر هو مالك اللعبة
@@ -494,79 +580,114 @@ export function registerButtonHandlers(client: Client) {
           else if (buttonId.startsWith('vote_player_')) {
             log(`معالجة زر تصويت: ${buttonId}`, 'discord-debug');
             
-            // استخراج معرف اللاعب المراد التصويت له
-            const targetId = parts[parts.length - 1];
+            // التأكد من أن التفاعل معلق قبل إنشاء الرد
+            try {
+              await interaction.deferReply({ ephemeral: true });
+            } catch (error) {
+              log(`خطأ في تأجيل الرد: ${error}`, 'discord-error');
+            }
+            
+            // استخراج معرفات من customId
+            // تنسيق المعرف: vote_player_GAMEID_PLAYERID
+            const gameIdFromButton = parseInt(parts[2]);
+            const targetId = parts[3];
+            
+            // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+            const targetGameState = getGameManager().getGameState(gameIdFromButton);
+            
+            if (!targetGameState) {
+              await interaction.editReply({
+                content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+              });
+              return;
+            }
             
             // التحقق من أن اللاعب موجود في اللعبة وعلى قيد الحياة
-            const voter = gameState.getPlayer(interaction.user.id);
-            const target = gameState.getPlayer(targetId);
+            const voter = targetGameState.getPlayer(interaction.user.id);
+            const target = targetGameState.getPlayer(targetId);
             
             if (!voter || !voter.isAlive) {
-              await interaction.reply({
-                content: 'لا يمكنك التصويت إلا إذا كنت على قيد الحياة في اللعبة.',
-                ephemeral: true
+              await interaction.editReply({
+                content: 'لا يمكنك التصويت إلا إذا كنت على قيد الحياة في اللعبة.'
               });
               return;
             }
             
             if (!target || !target.isAlive) {
-              await interaction.reply({
-                content: 'اللاعب المستهدف غير موجود أو ليس على قيد الحياة.',
-                ephemeral: true
+              await interaction.editReply({
+                content: 'اللاعب المستهدف غير موجود أو ليس على قيد الحياة.'
               });
               return;
             }
             
             // إذا كان اللاعب قد صوت سابقًا، قم بإزالة الصوت السابق
             if (voter.voted && voter.votedFor) {
-              gameState.removeVote(interaction.user.id);
+              targetGameState.removeVote(interaction.user.id);
             }
             
             // تسجيل التصويت الجديد
-            gameState.addVote(interaction.user.id, targetId);
+            targetGameState.addVote(interaction.user.id, targetId);
             
             // تأكيد التصويت للمستخدم
-            await interaction.reply({
-              content: `لقد قمت بالتصويت ضد **${target.username}**!`,
-              ephemeral: true
+            await interaction.editReply({
+              content: `لقد قمت بالتصويت ضد **${target.username}**!`
             });
             
             // تحديث رسالة التصويت العامة
             const { updateVotingMessage } = require('./tempUpdateVoting');
-            await updateVotingMessage(gameState, interaction);
+            await updateVotingMessage(targetGameState, interaction);
           }
           else if (buttonId.startsWith('vote_skip_')) {
             log(`معالجة زر تخطي التصويت: ${buttonId}`, 'discord-debug');
             
+            // التأكد من أن التفاعل معلق قبل إنشاء الرد
+            try {
+              await interaction.deferReply({ ephemeral: true });
+            } catch (error) {
+              log(`خطأ في تأجيل الرد: ${error}`, 'discord-error');
+            }
+            
+            // استخراج معرف اللعبة من customId
+            // تنسيق المعرف: vote_skip_GAMEID
+            const gameIdFromButton = parseInt(parts[2]);
+            
+            // استخدام المعرف المستخرج من الزر بدلاً من المعرف من gameState
+            const targetGameState = getGameManager().getGameState(gameIdFromButton);
+            
+            if (!targetGameState) {
+              await interaction.editReply({
+                content: 'لم يتم العثور على اللعبة. قد تكون اللعبة قد انتهت.'
+              });
+              return;
+            }
+            
             // التحقق من أن اللاعب موجود في اللعبة وعلى قيد الحياة
-            const voter = gameState.getPlayer(interaction.user.id);
+            const voter = targetGameState.getPlayer(interaction.user.id);
             
             if (!voter || !voter.isAlive) {
-              await interaction.reply({
-                content: 'لا يمكنك تخطي التصويت إلا إذا كنت على قيد الحياة في اللعبة.',
-                ephemeral: true
+              await interaction.editReply({
+                content: 'لا يمكنك تخطي التصويت إلا إذا كنت على قيد الحياة في اللعبة.'
               });
               return;
             }
             
             // إذا كان اللاعب قد صوت سابقًا، قم بإزالة الصوت السابق
             if (voter.voted && voter.votedFor) {
-              gameState.removeVote(interaction.user.id);
+              targetGameState.removeVote(interaction.user.id);
             }
             
             // تعيين حالة التصويت المُتخطى
             voter.voted = true;
-            gameState.players.set(interaction.user.id, voter);
+            targetGameState.players.set(interaction.user.id, voter);
             
             // تأكيد تخطي التصويت للمستخدم
-            await interaction.reply({
-              content: `لقد قمت بتخطي التصويت لهذه الجولة.`,
-              ephemeral: true
+            await interaction.editReply({
+              content: `لقد قمت بتخطي التصويت لهذه الجولة.`
             });
             
             // تحديث رسالة التصويت العامة
             const { updateVotingMessage } = require('./tempUpdateVoting');
-            await updateVotingMessage(gameState, interaction);
+            await updateVotingMessage(targetGameState, interaction);
           }
           else if (buttonId.startsWith('new_game_')) {
             await interaction.followUp({

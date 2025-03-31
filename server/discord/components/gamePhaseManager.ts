@@ -82,35 +82,6 @@ export async function startNightPhase(gameId: number, interaction: ButtonInterac
       files: [nightAttachment]
     });
     
-    // إنشاء رسالة عامة عن إجراءات الليل
-    const nightActionEmbed = new EmbedBuilder()
-      .setTitle(`🔮 إجراءات الليل - اليوم ${gameState.day}`)
-      .setColor('#191970')
-      .setDescription(`
-      # أدوار الليل تنشط الآن...
-      
-      **العراف** يستخدم قدراته للكشف عن هوية أحد اللاعبين.
-      
-      **الحارس** يحمي أحد سكان القرية من هجمات الليل.
-      
-      **المستذئبون** يجتمعون لاختيار ضحيتهم.
-      
-      **القناص** يستهدف مشتبه به بطلقة واحدة.
-      
-      **المحقق** يكشف عن انتماءات اللاعبين.
-      
-      **المنعش** يمكنه إعادة لاعب ميت إلى الحياة.
-      
-      **الساحر** يختار بين الحماية أو القتل.
-      
-      *سيتلقى كل لاعب رسالة خاصة لاستخدام قدراته أو لاستلام معلومات خاصة به.*
-      `);
-    
-    // إرسال رسالة عامة عن إجراءات الليل
-    await (channel as TextChannel).send({
-      embeds: [nightActionEmbed]
-    });
-    
     // تأخير 10 ثوانٍ قبل إرسال رسائل الإجراءات الليلية للاعبين
     await new Promise(resolve => setTimeout(resolve, 10000));
     
@@ -1115,6 +1086,7 @@ async function sendVotingOptions(gameState: GameState) {
     
     // إنشاء صف للأزرار (4 أزرار في كل صف كحد أقصى)
     let currentRow = new ActionRowBuilder<ButtonBuilder>();
+    let rowCount = 0;
     
     // إضافة أزرار لجميع اللاعبين
     for (let i = 0; i < alivePlayers.length; i++) {
@@ -1134,7 +1106,11 @@ async function sendVotingOptions(gameState: GameState) {
       // إذا وصلنا إلى 4 أزرار أو نهاية القائمة، نضيف الصف الحالي ونبدأ صفًا جديدًا
       if (currentRow.components.length === 4 || i === alivePlayers.length - 1) {
         buttonRows.push(currentRow);
-        currentRow = new ActionRowBuilder<ButtonBuilder>();
+        rowCount++;
+        // إنشاء صف جديد فقط إذا لم نكن في نهاية القائمة
+        if (i < alivePlayers.length - 1) {
+          currentRow = new ActionRowBuilder<ButtonBuilder>();
+        }
       }
     }
     
@@ -1245,31 +1221,24 @@ export async function handleVotingResults(gameId: number, interaction: ButtonInt
       votingResultsEmbed.setImage(`attachment://${imagePath}`);
     }
     
-    // إضافة زر بدء الليلة التالية
-    const nextPhaseButton = new ButtonBuilder()
-      .setCustomId(`start_night_${gameId}`)
-      .setLabel('بدء الليلة التالية')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('🌙');
-    
-    const row = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(nextPhaseButton);
-    
-    // إرسال رسالة النتائج
+    // إرسال رسالة النتائج بدون زر (ستبدأ الليلة تلقائيًا)
     if (!mostVotedPlayer) {
       // إذا لم يكن هناك لاعب تم التصويت عليه (تعادل أو عدم وجود أصوات)
       await (channel as TextChannel).send({
-        embeds: [votingResultsEmbed],
-        components: [row]
+        embeds: [votingResultsEmbed]
       });
     } else {
       // إذا كان هناك لاعب تم التصويت عليه مع الصورة
       await (channel as TextChannel).send({
         embeds: [votingResultsEmbed],
-        files: votingAttachment ? [votingAttachment] : undefined,
-        components: [row]
+        files: votingAttachment ? [votingAttachment] : undefined
       });
     }
+    
+    // إضافة رسالة تنبيه بأن الليلة ستبدأ تلقائيًا
+    await (channel as TextChannel).send({
+      content: "**ستبدأ الليلة التالية تلقائيًا بعد 10 ثوانٍ...**"
+    });
     
     // تفقد ما إذا كانت اللعبة قد انتهت بعد طرد اللاعب
     if (gameState.isGameOver()) {
@@ -1281,6 +1250,11 @@ export async function handleVotingResults(gameId: number, interaction: ButtonInt
     
     // تحضير اللعبة للمرحلة التالية
     gameState.prepareNextPhase();
+    
+    // بدء الليلة التالية تلقائيًا بعد 10 ثوانٍ
+    setTimeout(() => {
+      startNightPhase(gameId, interaction);
+    }, 10000);
     
     return true;
   } catch (error) {
