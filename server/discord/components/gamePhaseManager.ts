@@ -1264,7 +1264,7 @@ export async function handleVotingResults(gameId: number, interaction: ButtonInt
 /**
  * إرسال رسالة للاعب الذي تم طرده
  */
-async function sendEliminationMessage(player: Player) {
+export async function sendEliminationMessage(player: Player) {
   try {
     // إنشاء رسالة الإقصاء
     const eliminationEmbed = new EmbedBuilder()
@@ -1405,723 +1405,9 @@ export async function endGame(gameState: GameState, interaction: ButtonInteracti
  * تسجيل معالجات أزرار مراحل اللعبة
  */
 export function registerGamePhaseButtons(client: any) {
-  client.on(Events.InteractionCreate, async (interaction: any) => {
-    // تجاهل التفاعلات غير المدعومة
-    if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
-    
-    // تجاهل التفاعلات التي ليس لها customId
-    if (!interaction.customId) return;
-    
-    // فحص إذا كان التفاعل من نوع الأزرار التي نهتم بها
-    const isRelevantButton = 
-      interaction.customId.startsWith('werewolf_action_') ||
-      interaction.customId.startsWith('seer_action_') ||
-      interaction.customId.startsWith('guardian_action_') ||
-      interaction.customId.startsWith('detective_action_') ||
-      interaction.customId.startsWith('sniper_action_') ||
-      interaction.customId.startsWith('reviver_action_') ||
-      interaction.customId.startsWith('wizard_action_') ||
-      interaction.customId.startsWith('start_night_') ||
-      interaction.customId.startsWith('end_discussion_') ||
-      interaction.customId.startsWith('start_voting_') ||
-      interaction.customId.startsWith('end_voting_') ||
-      interaction.customId.startsWith('new_game_');
-    
-    if (!isRelevantButton) return;
-    
-    try {
-      // استخراج معرف اللعبة من معرف الزر
-      const customId = interaction.customId;
-      const parts = customId.split('_');
-      const gameId = parseInt(parts[parts.length - 1]);
-      
-      if (isNaN(gameId)) return;
-      
-      // الحصول على حالة اللعبة
-      const gameManager = getGameManager();
-      const gameState = gameManager.getGameState(gameId);
-      
-      if (!gameState) return;
-      
-      // تخزين التفاعل للاستخدام لاحقًا
-      storeInteraction(interaction.user.id, interaction);
-      
-      // معالجة تفاعلات الأزرار لمراحل اللعبة
-      if (customId.startsWith('start_night_')) {
-        // بدء مرحلة الليل
-        await interaction.deferUpdate();
-        startNightPhase(gameId, interaction);
-      }
-      else if (customId.startsWith('end_discussion_')) {
-        // إنهاء النقاش والانتقال إلى مرحلة التصويت
-        // التحقق من أن الضاغط على الزر هو مالك اللعبة
-        if (interaction.user.id !== gameState.ownerId) {
-          await interaction.reply({
-            content: 'فقط مالك اللعبة يمكنه إنهاء النقاش',
-            ephemeral: true
-          });
-          return;
-        }
-        
-        // إيقاف المؤقت إذا كان موجودًا
-        if (gameState.discussionTimer) {
-          clearInterval(gameState.discussionTimer);
-        }
-        
-        await interaction.deferUpdate();
-        
-        // إرسال رسالة بإنهاء النقاش
-        const game = await storage.getGame(gameId);
-        if (game && game.channelId) {
-          const client = getClient();
-          const channel = await client.channels.fetch(game.channelId);
-          if (channel && channel.isTextBased()) {
-            await (channel as TextChannel).send({
-              embeds: [
-                new EmbedBuilder()
-                  .setTitle('⏹️ تم إنهاء النقاش')
-                  .setColor('#FF6B00')
-                  .setDescription('**قرر مالك اللعبة إنهاء النقاش مبكرًا. حان وقت التصويت!**')
-              ]
-            });
-          }
-        }
-        
-        // بدء مرحلة التصويت
-        startVotingPhase(gameId, interaction);
-      }
-      else if (customId.startsWith('start_voting_')) {
-        // بدء مرحلة التصويت
-        await interaction.deferUpdate();
-        startVotingPhase(gameId, interaction);
-      }
-      else if (customId.startsWith('end_voting_')) {
-        // إنهاء التصويت ومعالجة النتائج
-        await interaction.deferUpdate();
-        
-        // إيقاف مؤقت التصويت إذا كان موجودًا
-        if (gameState.votingTimer) {
-          clearInterval(gameState.votingTimer);
-        }
-        
-        handleVotingResults(gameId, interaction);
-      }
-      else if (customId.startsWith('new_game_')) {
-        // بدء لعبة جديدة بعد انتهاء اللعبة الحالية
-        const game = await storage.getGame(gameId);
-        if (!game || !game.channelId) return;
-        
-        // استخدام أمر /game لبدء لعبة جديدة
-        await interaction.reply({
-          content: 'لبدء لعبة جديدة، استخدم الأمر `/game`',
-          ephemeral: true
-        });
-      }
-      // معالجة إجراءات الدور الليلي
-      else if (customId.startsWith('werewolf_action_') && interaction.isButton()) {
-        // إجراء المستذئب - اختيار ضحية باستخدام الأزرار
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء المستذئب
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'kill'
-        });
-        
-        // تعيين الضحية الحالية
-        gameState.setWerewolfVictim(targetId);
-        
-        // إرسال تأكيد الإجراء
-        await interaction.update({
-          content: `تم اختيار **${target.username}** كضحية للمستذئبين هذه الليلة.`,
-          components: [],
-          embeds: []
-        });
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('seer_action_') && interaction.isButton()) {
-        // إجراء العراف - كشف هوية لاعب باستخدام الأزرار
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء العراف
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'reveal'
-        });
-        
-        // تحديد ما إذا كان الهدف مستذئبًا
-        const isWerewolf = target.role === 'werewolf' || target.role === 'werewolfLeader';
-        
-        // إنشاء رسالة نتيجة الكشف
-        const resultEmbed = new EmbedBuilder()
-          .setTitle('👁️ نتيجة الرؤية')
-          .setColor(isWerewolf ? '#FF0000' : '#00FF00')
-          .setDescription(`
-          ## رؤيتك كشفت الحقيقة!
-          
-          بعد التركيز على **${target.username}**، تكشفت لك الحقيقة:
-          
-          **${target.username}** هو **${isWerewolf ? 'مستذئب! 🐺' : 'قروي عادي. 👨‍🌾'}**
-          
-          *استخدم هذه المعلومات بحكمة لمساعدة القرية.*
-          `);
-        
-        // إرسال نتيجة الكشف
-        await interaction.update({
-          embeds: [resultEmbed],
-          components: [],
-          content: null
-        });
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('guardian_action_') && interaction.isButton()) {
-        // إجراء الحارس - حماية لاعب
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء الحارس
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'protect'
-        });
-        
-        // تعيين حالة الحماية للاعب المستهدف
-        if (target) {
-          target.protected = true;
-          gameState.players.set(targetId, target);
-        }
-        
-        // إرسال تأكيد الإجراء
-        await interaction.update({
-          content: `تم اختيار **${target.username}** للحماية هذه الليلة.`,
-          components: [],
-          embeds: []
-        });
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('detective_action_') && interaction.isButton()) {
-        // إجراء المحقق - كشف الدور المحدد
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء المحقق
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'investigate'
-        });
-        
-        // إنشاء رسالة نتيجة التحقيق
-        const resultEmbed = new EmbedBuilder()
-          .setTitle('🔍 نتيجة التحقيق')
-          .setColor('#008080')
-          .setDescription(`
-          ## اكتشفت الحقيقة الكاملة!
-          
-          بعد تحقيق دقيق مع **${target.username}**، اكتشفت:
-          
-          **${target.username}** هو **${getRoleDisplayName(target.role as RoleType)} ${getRoleEmoji(target.role as RoleType)}**
-          
-          *هذه معلومات قيمة يمكنك استخدامها لصالح القرية.*
-          `);
-        
-        // إرسال نتيجة التحقيق
-        await interaction.update({
-          embeds: [resultEmbed],
-          components: [],
-          content: null
-        });
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('sniper_action_') && interaction.isButton()) {
-        // إجراء القناص - إطلاق النار على لاعب
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // التحقق مما إذا كان اللاعب قد اختار التخطي
-        if (targetId === 'skip') {
-          // تسجيل إجراء التخطي
-          gameState.addNightAction(interaction.user.id, {
-            targetId: 'skip',
-            actionType: 'skip_shot'
-          });
-          
-          // إرسال تأكيد الإجراء
-          await interaction.update({
-            content: `قررت الاحتفاظ برصاصتك لليلة أخرى.`,
-            components: [],
-            embeds: []
-          });
-        } else {
-          // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
-          if (!target) return;
-          
-          // تسجيل إجراء القناص
-          gameState.addNightAction(interaction.user.id, {
-            targetId,
-            actionType: 'shoot'
-          });
-          
-          // تحديد ما إذا كان الهدف مستذئبًا
-          const isWerewolf = target.role === 'werewolf' || target.role === 'werewolfLeader';
-          
-          // قم بتحديث حالة اللاعب المستهدف
-          if (!target.protected) {
-            target.isAlive = false;
-            gameState.players.set(targetId, target);
-            
-            // تحديث حالة اللاعب في قاعدة البيانات
-            await storage.updatePlayerStatus(gameId, targetId, false);
-          }
-          
-          // إنشاء رسالة نتيجة إطلاق النار
-          const resultEmbed = new EmbedBuilder()
-            .setTitle('🎯 نتيجة الطلقة')
-            .setColor(isWerewolf ? '#00FF00' : '#FF0000')
-            .setDescription(`
-            ## أطلقت النار!
-            
-            لقد أطلقت النار على **${target.username}**!
-            
-            ${target.protected ? 
-              `**لكن يبدو أن شيئًا ما منع الطلقة من إصابته!**` : 
-              `**${target.username}** كان **${getRoleDisplayName(target.role as RoleType)} ${getRoleEmoji(target.role as RoleType)}**`
-            }
-            
-            *لقد استخدمت إحدى رصاصتيك المحدودة.*
-            `);
-          
-          // إرسال نتيجة إطلاق النار
-          await interaction.update({
-            embeds: [resultEmbed],
-            components: [],
-            content: null
-          });
-          
-          // إرسال رسالة للضحية
-          if (!target.protected) {
-            await sendEliminationMessage(target);
-          }
-        }
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // تفقد ما إذا كانت اللعبة قد انتهت بعد إطلاق النار
-          if (gameState.isGameOver()) {
-            setTimeout(() => {
-              endGame(gameState, interaction);
-            }, 3000);
-            return;
-          }
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('reviver_action_') && interaction.isButton()) {
-        // إجراء المنعش - إحياء لاعب
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // التحقق مما إذا كان اللاعب قد اختار التخطي
-        if (targetId === 'skip') {
-          // تسجيل إجراء التخطي
-          gameState.addNightAction(interaction.user.id, {
-            targetId: 'skip',
-            actionType: 'skip_revive'
-          });
-          
-          // إرسال تأكيد الإجراء
-          await interaction.update({
-            content: `قررت الاحتفاظ بقدرة الإحياء لوقت لاحق.`,
-            components: [],
-            embeds: []
-          });
-        } else {
-          // الحصول على اللاعب المستهدف
-          const target = gameState.getPlayer(targetId);
-          if (!target) return;
-          
-          // تسجيل إجراء المنعش
-          gameState.addNightAction(interaction.user.id, {
-            targetId,
-            actionType: 'revive'
-          });
-          
-          // تحديث حالة اللاعب المستهدف
-          target.isAlive = true;
-          gameState.players.set(targetId, target);
-          
-          // تحديث حالة اللاعب في قاعدة البيانات
-          await storage.updatePlayerStatus(gameId, targetId, true);
-          
-          // إنشاء رسالة نتيجة الإحياء
-          const resultEmbed = new EmbedBuilder()
-            .setTitle('💓 نتيجة الإحياء')
-            .setColor('#FF69B4')
-            .setDescription(`
-            ## أعدت الحياة!
-            
-            لقد نجحت في إحياء **${target.username}**!
-            
-            **${target.username}** سيعود للعبة في اليوم القادم.
-            
-            *لقد استخدمت قدرة الإحياء الخاصة بك.*
-            `);
-          
-          // إرسال نتيجة الإحياء
-          await interaction.update({
-            embeds: [resultEmbed],
-            components: [],
-            content: null
-          });
-          
-          // إرسال رسالة للاعب الذي تم إحياؤه
-          const revivedEmbed = new EmbedBuilder()
-            .setTitle('✨ لقد تمت إعادتك للحياة!')
-            .setColor('#00FF00')
-            .setDescription(`
-            # أنت حي مرة أخرى!
-            
-            **المنعش** استخدم قدرته الخاصة لإعادتك إلى الحياة.
-            
-            ستتمكن من المشاركة في اللعبة مرة أخرى في اليوم القادم.
-            
-            *لا تضيع فرصتك الثانية!*
-            `);
-          
-          // إرسال الرسالة للاعب المحيا
-          const targetInteraction = getStoredInteraction(targetId);
-          if (targetInteraction) {
-            if (targetInteraction.replied) {
-              await targetInteraction.followUp({ embeds: [revivedEmbed], ephemeral: true });
-            } else {
-              await targetInteraction.reply({ embeds: [revivedEmbed], ephemeral: true });
-            }
-          }
-        }
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('wizard_') && interaction.isButton()) {
-        // إجراءات الساحر
-        const action = customId.split('_')[1];
-        
-        if (action === 'skip') {
-          // تسجيل إجراء التخطي
-          gameState.addNightAction(interaction.user.id, {
-            targetId: 'skip',
-            actionType: 'skip_wizard'
-          });
-          
-          // إرسال تأكيد الإجراء
-          await interaction.update({
-            content: `قررت عدم استخدام أي قدرة هذه الليلة.`,
-            components: [],
-            embeds: []
-          });
-        }
-        else if (action === 'protect') {
-          // إجراء الحماية - إظهار قائمة اللاعبين للحماية
-          const alivePlayers = gameState.getAlivePlayers();
-          
-          // إنشاء قائمة منسدلة للاختيار بين اللاعبين
-          const selectOptions: SelectMenuComponentOptionData[] = alivePlayers.map(p => ({
-            label: p.username,
-            value: p.id,
-            description: `حماية ${p.username} من الموت هذه الليلة`,
-            emoji: '🧪'
-          }));
-          
-          // إنشاء قائمة منسدلة
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`wizard_protect_select_${gameState.id}`)
-            .setPlaceholder('اختر لاعب لحمايته')
-            .addOptions(selectOptions);
-          
-          // إنشاء صف الأزرار
-          const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-            .addComponents(selectMenu);
-          
-          // إرسال قائمة الاختيار
-          await interaction.update({
-            content: 'اختر لاعباً لحمايته باستخدام إكسير الحماية:',
-            components: [row],
-            embeds: []
-          });
-        }
-        else if (action === 'poison') {
-          // إجراء التسميم - إظهار قائمة اللاعبين للقتل
-          const alivePlayers = gameState.getAlivePlayers()
-            .filter(p => p.id !== interaction.user.id); // استبعاد نفسك
-          
-          // إنشاء قائمة منسدلة للاختيار بين اللاعبين
-          const selectOptions: SelectMenuComponentOptionData[] = alivePlayers.map(p => ({
-            label: p.username,
-            value: p.id,
-            description: `تسميم ${p.username}`,
-            emoji: '☠️'
-          }));
-          
-          // إنشاء قائمة منسدلة
-          const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`wizard_poison_select_${gameState.id}`)
-            .setPlaceholder('اختر لاعب لتسميمه')
-            .addOptions(selectOptions);
-          
-          // إنشاء صف الأزرار
-          const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-            .addComponents(selectMenu);
-          
-          // إرسال قائمة الاختيار
-          await interaction.update({
-            content: 'اختر لاعباً لتسميمه باستخدام السم القاتل:',
-            components: [row],
-            embeds: []
-          });
-        }
-      }
-      else if (customId.startsWith('wizard_protect_select_') && interaction.isStringSelectMenu()) {
-        // إجراء حماية الساحر - تنفيذ الحماية
-        const targetId = interaction.values[0];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء الساحر
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'wizard_protect'
-        });
-        
-        // تعيين حالة الحماية للاعب المستهدف
-        if (target) {
-          target.protected = true;
-          gameState.players.set(targetId, target);
-        }
-        
-        // إرسال تأكيد الإجراء
-        await interaction.update({
-          content: `تم حماية **${target.username}** باستخدام إكسير الحماية.`,
-          components: [],
-          embeds: []
-        });
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('wizard_poison_select_') && interaction.isStringSelectMenu()) {
-        // إجراء تسميم الساحر - تنفيذ القتل
-        const targetId = interaction.values[0];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل إجراء الساحر
-        gameState.addNightAction(interaction.user.id, {
-          targetId,
-          actionType: 'wizard_poison'
-        });
-        
-        // قم بتحديث حالة اللاعب المستهدف إذا لم يكن محميًا
-        if (!target.protected) {
-          target.isAlive = false;
-          gameState.players.set(targetId, target);
-          
-          // تحديث حالة اللاعب في قاعدة البيانات
-          await storage.updatePlayerStatus(gameId, targetId, false);
-        }
-        
-        // إنشاء رسالة نتيجة التسميم
-        const resultEmbed = new EmbedBuilder()
-          .setTitle('☠️ نتيجة التسميم')
-          .setColor('#9932CC')
-          .setDescription(`
-          ## لقد استخدمت السم القاتل!
-          
-          لقد قمت بتسميم **${target.username}**!
-          
-          ${target.protected ? 
-            `**لكن يبدو أن شيئًا ما منع السم من التأثير عليه!**` : 
-            `**${target.username}** كان **${getRoleDisplayName(target.role as RoleType)} ${getRoleEmoji(target.role as RoleType)}**`
-          }
-          
-          *لقد استخدمت السم القاتل الخاص بك.*
-          `);
-        
-        // إرسال نتيجة التسميم
-        await interaction.update({
-          embeds: [resultEmbed],
-          components: [],
-          content: null
-        });
-        
-        // إرسال رسالة للضحية
-        if (!target.protected) {
-          await sendEliminationMessage(target);
-        }
-        
-        // إذا كانت جميع الإجراءات الليلية قد تمت، انتقل إلى مرحلة النهار
-        if (gameState.areAllNightActionsDone()) {
-          // إحضار الضحية المستهدفة
-          const victim = gameState.getPlayer(gameState.currentNightVictim as string);
-          const wasProtected = victim?.protected || false;
-          
-          // تفقد ما إذا كانت اللعبة قد انتهت بعد التسميم
-          if (gameState.isGameOver()) {
-            setTimeout(() => {
-              endGame(gameState, interaction);
-            }, 3000);
-            return;
-          }
-          
-          // بدء مرحلة النهار بعد مهلة قصيرة
-          setTimeout(() => {
-            startDayPhase(gameId, interaction, victim, wasProtected);
-          }, 2000);
-        }
-      }
-      else if (customId.startsWith('vote_player_') && interaction.isButton()) {
-        // إجراء التصويت على لاعب
-        const parts = customId.split('_');
-        const targetId = parts[parts.length - 1];
-        
-        // الحصول على اللاعب المستهدف
-        const target = gameState.getPlayer(targetId);
-        if (!target) return;
-        
-        // تسجيل التصويت (إزالة التصويت السابق إذا وجد)
-        if (gameState.votes.has(interaction.user.id)) {
-          gameState.removeVote(interaction.user.id);
-        }
-        
-        // إضافة التصويت الجديد
-        gameState.addVote(interaction.user.id, targetId);
-        
-        // إرسال تأكيد التصويت
-        await interaction.update({
-          content: `تم التصويت ضد **${target.username}**. يمكنك تغيير صوتك قبل انتهاء فترة التصويت.`,
-          components: [],
-          embeds: []
-        });
-        
-        // إذا كان جميع اللاعبين الأحياء قد صوتوا، اعرض نتائج التصويت
-        if (gameState.areAllVotesDone()) {
-          // بدء معالجة نتائج التصويت بعد مهلة قصيرة
-          setTimeout(() => {
-            handleVotingResults(gameId, interaction);
-          }, 2000);
-        }
-      }
-      
-    } catch (error) {
-      log(`خطأ في معالجة تفاعلات مراحل اللعبة: ${error}`, 'discord-game');
-      
-      // محاولة إرسال رسالة خطأ للمستخدم
-      try {
-        if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({
-            content: 'حدث خطأ أثناء معالجة إجراءك. الرجاء المحاولة مرة أخرى.',
-            ephemeral: true
-          });
-        } else {
-          await interaction.reply({
-            content: 'حدث خطأ أثناء معالجة إجراءك. الرجاء المحاولة مرة أخرى.',
-            ephemeral: true
-          });
-        }
-      } catch (replyError) {
-        log(`خطأ في إرسال رسالة الخطأ: ${replyError}`, 'discord-game');
-      }
-    }
-  });
+  // نقوم بتعريف دالة يتم استدعاؤها من المكان المناسب بدلاً من تسجيل مستمع جديد
+  log(`تم تسجيل معالجات أزرار مراحل اللعبة`, 'discord-debug');
+  
+  // لن نقوم بتسجيل مستمع جديد هنا لتجنب التداخل مع المستمع الرئيسي في ملف game.ts
+  // تم نقل المنطق إلى هناك
 }
